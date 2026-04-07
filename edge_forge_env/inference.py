@@ -9,8 +9,13 @@ rewards sequential decision-making over random guessing.
 import random
 import requests
 import time
+import os
 
-BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+BASE_URL = API_BASE_URL
 
 # ── Color codes for terminal output ─────────────────────────────────
 RESET = "\033[0m"
@@ -78,13 +83,14 @@ def format_action(action):
     return a_type
 
 
-def run_episode(episode_num, verbose=True):
+def run_episode(episode_num, global_step_offset=0, verbose=True):
     reset_env()
     done = False
     total_reward = 0.0
     step_count = 0
     all_branches = set()
     crashes = 0
+    rewards_list = []
 
     if verbose:
         print(f"\n{BOLD}{CYAN}{'═' * 60}{RESET}")
@@ -100,10 +106,12 @@ def run_episode(episode_num, verbose=True):
             raise Exception("Step response missing observation")
 
         obs = result["observation"]
-        reward = result.get("reward", 0)
+        reward = float(result.get("reward", 0))
         done = result["done"]
         total_reward += reward
         step_count += 1
+        rewards_list.append(reward)
+        global_step = global_step_offset + step_count
 
         new_branches = set(obs["covered_branches"]) - all_branches
         all_branches = set(obs["covered_branches"])
@@ -111,6 +119,11 @@ def run_episode(episode_num, verbose=True):
         if verbose:
             # Build step output
             action_str = format_action(action)
+            
+            # Required structured log format
+            err = obs.get('last_error') 
+            error_val = f'"{err}"' if err else "null"
+            print(f"[STEP] step={global_step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}")
 
             if new_branches:
                 branch_str = f" {GREEN}🟢 NEW: {', '.join(new_branches)}{RESET}"
@@ -148,6 +161,7 @@ def run_episode(episode_num, verbose=True):
         "steps": step_count,
         "crashes": crashes,
         "last_obs": obs,
+        "rewards_list": rewards_list,
     }
 
 
@@ -165,6 +179,7 @@ def _coverage_bar(covered, total, width=20):
 
 
 def main():
+    print(f"[START] task=edge_forge env=openenv model={MODEL_NAME}")
     print(f"\n{BOLD}{MAGENTA}🔥 EDGE-FORGE — Baseline Random Agent{RESET}")
     print(f"{DIM}   Autonomous Synthetic Staging Engine{RESET}")
     print(f"{DIM}   Testing random policy against 19-branch application...{RESET}")
@@ -172,58 +187,72 @@ def main():
     best_coverage = 0
     best_result = None
     all_discovered = set()
+    global_step_count = 0
+    all_rewards = []
+    
+    success = False
+    score = 0.0
 
-    start = time.time()
+    try:
+        start = time.time()
 
-    for ep in range(5):
-        result = run_episode(ep + 1)
-        all_discovered.update(result["branches"])
+        for ep in range(5):
+            result = run_episode(ep + 1, global_step_offset=global_step_count)
+            all_discovered.update(result["branches"])
+            global_step_count += result["steps"]
+            all_rewards.extend(result["rewards_list"])
 
-        if len(result["branches"]) > best_coverage:
-            best_coverage = len(result["branches"])
-            best_result = result
+            if len(result["branches"]) > best_coverage:
+                best_coverage = len(result["branches"])
+                best_result = result
 
-    elapsed = time.time() - start
+        elapsed = time.time() - start
 
-    # ── Final summary ───────────────────────────────────────────────
-    print(f"\n{BOLD}{'═' * 60}{RESET}")
-    print(f"{BOLD}  FINAL RESULTS (5 episodes, {elapsed:.1f}s){RESET}")
-    print(f"{'═' * 60}")
+        # ── Final summary ───────────────────────────────────────────────
+        print(f"\n{BOLD}{'═' * 60}{RESET}")
+        print(f"{BOLD}  FINAL RESULTS (5 episodes, {elapsed:.1f}s){RESET}")
+        print(f"{'═' * 60}")
 
-    print(f"\n  {BOLD}Total unique branches discovered: {len(all_discovered)}/19{RESET}")
-    print(f"  {_coverage_bar(len(all_discovered), 19)}")
-    print(f"\n  All discovered: {sorted(all_discovered)}")
+        print(f"\n  {BOLD}Total unique branches discovered: {len(all_discovered)}/19{RESET}")
+        print(f"  {_coverage_bar(len(all_discovered), 19)}")
+        print(f"\n  All discovered: {sorted(all_discovered)}")
 
-    # Score using best episode's final observation
-    best_obs = best_result["last_obs"]
+        # Score using best episode's final observation
+        best_obs = best_result["last_obs"]
 
-    easy = 1.0 if "ssn_format_bug" in all_discovered else 0.0
-    medium = min(len(all_discovered) / 19, 1.0)
-    hard = 1.0 if "stateful_crash" in all_discovered else 0.0
+        easy = 1.0 if "ssn_format_bug" in all_discovered else 0.0
+        medium = min(len(all_discovered) / 19, 1.0)
+        hard = 1.0 if "stateful_crash" in all_discovered else 0.0
 
-    print(f"\n  {BOLD}Scores:{RESET}")
-    print(f"  ├── Easy   (ssn_bug):   {_score_badge(easy)}")
-    print(f"  ├── Medium (coverage):  {_score_badge(medium)} ({len(all_discovered)}/19)")
-    print(f"  └── Hard   (stateful):  {_score_badge(hard)}")
+        print(f"\n  {BOLD}Scores:{RESET}")
+        print(f"  ├── Easy   (ssn_bug):   {_score_badge(easy)}")
+        print(f"  ├── Medium (coverage):  {_score_badge(medium)} ({len(all_discovered)}/19)")
+        print(f"  └── Hard   (stateful):  {_score_badge(hard)}")
 
-    has_stateful = "stateful_crash" in all_discovered
-    has_ssn_bug = "ssn_format_bug" in all_discovered
+        has_stateful = "stateful_crash" in all_discovered
+        has_ssn_bug = "ssn_format_bug" in all_discovered
+        
+        success = has_stateful
+        score = min(len(all_discovered) / 19, 1.0)
 
-    print(f"\n  {BOLD}RL Insight:{RESET}")
-    if not has_ssn_bug:
-        print(f"  {YELLOW}⚠️  Random agent FAILED to discover SSN format bug{RESET}")
-        print(f"  {DIM}   (Requires: open_account → verify_identity + invalid SSN){RESET}")
-    else:
-        print(f"  {GREEN}✓ Random agent found SSN format bug (lucky!){RESET}")
+        print(f"\n  {BOLD}RL Insight:{RESET}")
+        if not has_ssn_bug:
+            print(f"  {YELLOW}⚠️  Random agent FAILED to discover SSN format bug{RESET}")
+            print(f"  {DIM}   (Requires: open_account → verify_identity + invalid SSN){RESET}")
+        else:
+            print(f"  {GREEN}✓ Random agent found SSN format bug (lucky!){RESET}")
 
-    if not has_stateful:
-        print(f"  {YELLOW}⚠️  Random agent FAILED to discover stateful crash{RESET}")
-        print(f"  {DIM}   (Requires: open_account → verify_identity without SSN){RESET}")
-    else:
-        print(f"  {GREEN}✓ Random agent found stateful crash (lucky!){RESET}")
+        if not has_stateful:
+            print(f"  {YELLOW}⚠️  Random agent FAILED to discover stateful crash{RESET}")
+            print(f"  {DIM}   (Requires: open_account → verify_identity without SSN){RESET}")
+        else:
+            print(f"  {GREEN}✓ Random agent found stateful crash (lucky!){RESET}")
 
-    print(f"\n  {DIM}→ An RL agent would learn these sequences, a random agent cannot.{RESET}")
-    print()
+        print(f"\n  {DIM}→ An RL agent would learn these sequences, a random agent cannot.{RESET}")
+        print()
+
+    finally:
+        print(f"[END] success={str(success).lower()} steps={global_step_count} score={score:.2f} rewards={','.join(f'{r:.2f}' for r in all_rewards)}")
 
 
 def _score_badge(score):
