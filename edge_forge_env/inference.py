@@ -121,9 +121,9 @@ def run_episode(episode_num, global_step_offset=0, verbose=True):
             action_str = format_action(action)
             
             # Required structured log format
-            err = obs.get('last_error') 
-            error_val = f'"{err}"' if err else "null"
-            print(f"[STEP] step={global_step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}")
+            err = obs.get('last_error')
+            error_val = err if err else "null"
+            print(f"[STEP] step={global_step} action={action_str} reward={reward:.2f} done={str(done).lower()} error={error_val}")
 
             if new_branches:
                 branch_str = f" {GREEN}🟢 NEW: {', '.join(new_branches)}{RESET}"
