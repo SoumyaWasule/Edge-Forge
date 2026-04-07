@@ -1,0 +1,11 @@
+name: edge_forge_env
+description: RL environment for synthetic test data generation and edge-case discovery
+version: 0.1.0
+entrypoint: server.app:app
+tasks:
+  - name: easy
+    description: Discover the SSN format validation bug via sequential API calls
+  - name: medium
+    description: Maximize branch coverage across 19 code paths
+  - name: hard
+    description: Trigger the stateful crash via the account lifecycle sequence

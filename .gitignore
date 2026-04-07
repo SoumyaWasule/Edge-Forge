@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+openenv_edge_forge_env.egg-info/
+node_modules/
+dist/
+build/
