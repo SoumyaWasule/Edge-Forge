@@ -94,6 +94,55 @@ async def step_stateful(request: dict = {}):
     return serialize_observation(observation)
 
 
+@app.get(
+    "/tasks",
+    tags=["Tasks"],
+    summary="List available tasks with graders",
+)
+async def list_tasks():
+    """Return task definitions with grader status."""
+    return [
+        {
+            "id": "easy_task",
+            "name": "easy",
+            "description": "Discover the SSN format validation bug via sequential API calls",
+            "has_grader": True,
+        },
+        {
+            "id": "medium_task",
+            "name": "medium",
+            "description": "Maximize branch coverage across 19 code paths",
+            "has_grader": True,
+        },
+        {
+            "id": "hard_task",
+            "name": "hard",
+            "description": "Trigger the stateful crash via the account lifecycle sequence",
+            "has_grader": True,
+        },
+    ]
+
+
+@app.post(
+    "/grade",
+    tags=["Tasks"],
+    summary="Grade a specific task",
+)
+async def grade_task(request: dict = {}):
+    """Grade a task using the current environment state."""
+    task_id = request.get("task_id", "")
+    with _env_lock:
+        if task_id == "easy_task":
+            score = _env_instance.grade_easy()
+        elif task_id == "medium_task":
+            score = _env_instance.grade_medium()
+        elif task_id == "hard_task":
+            score = _env_instance.grade_hard()
+        else:
+            return {"error": f"Unknown task_id: {task_id}", "score": 0.01}
+    return {"task_id": task_id, "score": score}
+
+
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
     Entry point for direct execution.

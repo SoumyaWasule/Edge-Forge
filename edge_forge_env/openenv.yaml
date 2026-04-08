@@ -6,9 +6,12 @@ tasks:
   - id: easy_task
     name: easy
     description: Discover the SSN format validation bug via sequential API calls
+    grader: tasks:grade_easy
   - id: medium_task
     name: medium
     description: Maximize branch coverage across 19 code paths
+    grader: tasks:grade_medium
   - id: hard_task
     name: hard
     description: Trigger the stateful crash via the account lifecycle sequence
+    grader: tasks:grade_hard

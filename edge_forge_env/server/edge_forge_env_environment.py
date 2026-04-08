@@ -201,9 +201,45 @@ class EdgeForgeEnvironment:
 
         return observation
 
-    # 
+    # ——————————————————————————————
+    # GRADERS (bound to environment instance)
+    # ——————————————————————————————
+    def grade_easy(self):
+        """Grade easy task: discover SSN format bug."""
+        try:
+            branches = list(self.state.get("covered_branches", []) if self.state else [])
+            return 0.99 if "ssn_format_bug" in branches else 0.01
+        except Exception:
+            return 0.01
+
+    def grade_medium(self):
+        """Grade medium task: branch coverage ratio."""
+        try:
+            branches = list(self.state.get("covered_branches", []) if self.state else [])
+            raw = len(branches) / TOTAL_BRANCHES
+            return max(0.01, min(raw, 0.99))
+        except Exception:
+            return 0.01
+
+    def grade_hard(self):
+        """Grade hard task: trigger stateful crash."""
+        try:
+            branches = list(self.state.get("covered_branches", []) if self.state else [])
+            return 0.99 if "stateful_crash" in branches else 0.01
+        except Exception:
+            return 0.01
+
+    def get_tasks(self):
+        """Return task definitions with bound graders for discovery."""
+        return [
+            {"id": "easy_task", "name": "easy", "grader": self.grade_easy},
+            {"id": "medium_task", "name": "medium", "grader": self.grade_medium},
+            {"id": "hard_task", "name": "hard", "grader": self.grade_hard},
+        ]
+
+    # ——————————————————————————————
     # ASYNC WRAPPERS (required by OpenEnv)
-    # 
+    # ——————————————————————————————
     async def reset_async(self):
         return self.reset()
 
