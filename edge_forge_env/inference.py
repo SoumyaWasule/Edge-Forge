@@ -134,7 +134,7 @@ def run_episode(episode_num, global_step_offset=0, verbose=True):
 
         obs = result["observation"]
         reward = float(result.get("reward", 0))
-        done = result["done"]
+        done = result.get("done", True)
         total_reward += reward
         step_count += 1
         rewards_list.append(reward)
@@ -149,8 +149,8 @@ def run_episode(episode_num, global_step_offset=0, verbose=True):
             
             # Required structured log format
             err = obs.get('last_error') 
-            error_val = f'"{err}"' if err else "null"
-            print(f"[STEP] step={global_step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}")
+            error_val = err if err else "null"
+            print(f"[STEP] step={global_step} action={action_str} reward={reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
 
             if new_branches:
                 branch_str = f" {GREEN}🟢 NEW: {', '.join(new_branches)}{RESET}"
