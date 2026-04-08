@@ -74,7 +74,7 @@ def step_env(action):
     try:
         response = requests.post(
             f"{BASE_URL}/step",
-            json={"action": action},
+            json=action,
             timeout=5
         )
         response.raise_for_status()
