@@ -1,12 +1,12 @@
 """
-Edge Forge Environment — core RL environment implementation.
+Edge Forge Environment -- core RL environment implementation.
 
 This environment simulates an application under test. The agent builds
 input payloads (SET_FIELD), submits them (SUBMIT), and receives feedback
 on which code branches were triggered and whether errors occurred.
 
 Key design decisions:
-  - SUBMIT is NOT terminal — the agent can submit multiple times per
+  - SUBMIT is NOT terminal -- the agent can submit multiple times per
     episode to discover branches on different code paths.
   - RESET clears the current input AND gives a small exploration bonus
     when switching to a new payload after a submission.
@@ -24,7 +24,7 @@ from edge_forge_env.mock_api import process_application, TOTAL_BRANCHES
 from openenv.core.env_server.types import EnvironmentMetadata
 
 
-# ── Input validation ────────────────────────────────────────────────
+#  Input validation 
 VALID_FIELDS = {
     "age": (int, float),
     "income": (int, float),
@@ -60,9 +60,9 @@ class EdgeForgeEnvironment:
             description="Autonomous Synthetic Staging Engine with Stateful Bugs"
         )
 
-    # ────────────────────────────────────────────────────────────────
+    # 
     # RESET
-    # ────────────────────────────────────────────────────────────────
+    # 
     def reset(self) -> EdgeForgeObservation:
         self.state = {
             "current_input": {},
@@ -83,9 +83,9 @@ class EdgeForgeEnvironment:
             current_input={},
         )
 
-    # ────────────────────────────────────────────────────────────────
+    # 
     # STEP
-    # ────────────────────────────────────────────────────────────────
+    # 
     def step(self, action: EdgeForgeAction) -> EdgeForgeObservation:
 
         # Guard: reject actions after episode termination
@@ -112,12 +112,12 @@ class EdgeForgeEnvironment:
 
         self.state["steps"] += 1
 
-        # ── ACTION: SET_FIELD ───────────────────────────────────────
+        #  ACTION: SET_FIELD 
         if action.action_type == "SET_FIELD":
             if action.field in VALID_FIELDS:
                 if action.value is not None and _validate_field(action.field, action.value):
                     self.state["current_input"][action.field] = action.value
-                    # Intermediate reward — input completeness
+                    # Intermediate reward -- input completeness
                     completeness = len(self.state["current_input"]) / len(VALID_FIELDS)
                     reward += completeness * 0.5
                 else:
@@ -126,13 +126,13 @@ class EdgeForgeEnvironment:
             else:
                 reward -= 1.0  # unknown field
 
-        # ── ACTION: RESET ───────────────────────────────────────────
+        #  ACTION: RESET 
         elif action.action_type == "RESET":
             if self.state["submits"] > 0 and len(self.state["current_input"]) > 0:
                 reward += 1.0  # exploration diversity bonus
             self.state["current_input"] = {}
 
-        # ── ACTION: SUBMIT ──────────────────────────────────────────
+        #  ACTION: SUBMIT 
         elif action.action_type == "SUBMIT":
             self.state["submits"] += 1
             old_coverage = set(self.state["covered_branches"])
@@ -152,7 +152,7 @@ class EdgeForgeEnvironment:
             else:
                 status = 200
 
-            # Coverage reward — only for NEW branches
+            # Coverage reward -- only for NEW branches
             new_branches = covered - old_coverage
             self.state["covered_branches"].update(covered)
             reward += len(new_branches) * 10.0
@@ -172,20 +172,20 @@ class EdgeForgeEnvironment:
             info["submit_result"] = result
             info["new_branches"] = list(new_branches)
 
-        # ── Step penalty (always applied) ───────────────────────────
+        #  Step penalty (always applied) 
         reward -= 1.0
 
-        # ── Termination ─────────────────────────────────────────────
+        #  Termination 
         if self.state["steps"] >= self.MAX_STEPS:
             done = True
 
-        # ── Coverage milestone bonus ────────────────────────────────
+        #  Coverage milestone bonus 
         coverage_ratio = len(self.state["covered_branches"]) / TOTAL_BRANCHES
         if coverage_ratio >= 1.0 and not done:
             reward += 100.0
             done = True
 
-        # ── Track done state ────────────────────────────────────────
+        #  Track done state 
         if done:
             self.state["done"] = True
 
@@ -201,9 +201,9 @@ class EdgeForgeEnvironment:
 
         return observation
 
-    # ────────────────────────────────────────────────────────────────
+    # 
     # ASYNC WRAPPERS (required by OpenEnv)
-    # ────────────────────────────────────────────────────────────────
+    # 
     async def reset_async(self):
         return self.reset()
 

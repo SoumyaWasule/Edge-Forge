@@ -32,7 +32,7 @@ except ImportError:
     from server.edge_forge_env_environment import EdgeForgeEnvironment
 
 
-# ── Create base app (registers schema, health, WS, MCP, etc.) ──────
+#  Create base app (registers schema, health, WS, MCP, etc.) 
 app = create_app(
     EdgeForgeEnvironment,
     EdgeForgeAction,
@@ -42,7 +42,7 @@ app = create_app(
 )
 
 
-# ── Remove framework's stateless /reset and /step routes ────────────
+#  Remove framework's stateless /reset and /step routes 
 # The OpenEnv framework registers these as stateless (fresh env per request).
 # We need to replace them with stateful versions for multi-step episodes.
 _routes_to_remove = {"/reset", "/step"}
@@ -52,7 +52,7 @@ app.routes[:] = [
 ]
 
 
-# ── Persistent environment for stateful HTTP episodes ───────────────
+#  Persistent environment for stateful HTTP episodes 
 _env_lock = threading.Lock()
 _env_instance: EdgeForgeEnvironment = EdgeForgeEnvironment()
 

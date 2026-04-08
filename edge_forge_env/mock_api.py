@@ -1,7 +1,7 @@
 """
-Mock Application API — simulates a complex loan/user processing system.
+Mock Application API -- simulates a complex loan/user processing system.
 
-This module represents the "system under test" — the application whose
+This module represents the "system under test" -- the application whose
 edge cases the RL agent must discover through synthetic input generation.
 
 Design principles:
@@ -10,7 +10,7 @@ Design principles:
   - Branches are layered with nested conditions to require multi-step
     reasoning (not just single-field guessing).
   - Stateful bugs require SEQUENTIAL API calls (e.g., open_account THEN
-    verify_identity) — random agents can't reliably discover these.
+    verify_identity) -- random agents can't reliably discover these.
   - 19 distinct branches provide a meaningful exploration space.
 """
 
@@ -41,8 +41,8 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
     credit_score = data.get("credit_score", 0)
     region = data.get("region")
 
-    # ── Stateful API: Account lifecycle ─────────────────────────────
-    # These branches REQUIRE sequential calls — random agents can't
+    #  Stateful API: Account lifecycle 
+    # These branches REQUIRE sequential calls -- random agents can't
     # reliably discover them because they need prior state.
 
     if action == "open_account":
@@ -71,7 +71,7 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
 
         return {"status": "ok", "note": "no pending account"}, covered
 
-    # ── Layer 1: Required field validation ──────────────────────────
+    #  Layer 1: Required field validation 
     if age is None:
         covered.add("missing_age")
         return {"status": "error", "error": "Age is required"}, covered
@@ -80,7 +80,7 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
         covered.add("missing_income")
         return {"status": "error", "error": "Income is required"}, covered
 
-    # ── Layer 2: Basic eligibility ──────────────────────────────────
+    #  Layer 2: Basic eligibility 
     if age < thresholds.get("age_limit", 18):
         covered.add("underage")
         return {"status": "rejected", "reason": "underage"}, covered
@@ -89,7 +89,7 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
         covered.add("negative_income")
         return {"status": "error", "error": "Invalid income value"}, covered
 
-    # ── Layer 3: Financial risk assessment ──────────────────────────
+    #  Layer 3: Financial risk assessment 
     if balance < -1000:
         covered.add("extreme_debt")
         # Nested: extreme-debt enterprise recovery
@@ -102,7 +102,7 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
         covered.add("terrible_credit")
         return {"status": "rejected", "reason": "credit_too_low"}, covered
 
-    # ── Layer 4: User-type specific paths ───────────────────────────
+    #  Layer 4: User-type specific paths 
     if user_type == "enterprise":
         covered.add("enterprise_path")
 
@@ -117,7 +117,7 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
 
         return {"status": "approved", "tier": "standard_enterprise"}, covered
 
-    # ── Layer 5: Region-specific compliance ─────────────────────────
+    #  Layer 5: Region-specific compliance 
     if region == "restricted":
         covered.add("restricted_region")
         if income > 75000 and days_active > 180:
@@ -125,11 +125,11 @@ def process_application(data: dict, app_state: dict, thresholds: dict) -> tuple[
             return {"status": "approved", "note": "compliance_override"}, covered
         return {"status": "pending_review", "reason": "region_restriction"}, covered
 
-    # ── Layer 6: New user handling ──────────────────────────────────
+    #  Layer 6: New user handling 
     if days_active < 10:
         covered.add("new_user")
         return {"status": "limited", "reason": "new_account"}, covered
 
-    # ── Default: approved ───────────────────────────────────────────
+    #  Default: approved 
     covered.add("approved")
     return {"status": "approved"}, covered
