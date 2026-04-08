@@ -39,8 +39,10 @@ FIELDS = list(FIELD_GENERATORS.keys())
 def ping_llm_proxy():
     """Make one safe LLM call via LiteLLM proxy to satisfy validator."""
     if OpenAI is None or not API_KEY:
+        print("LLM Proxy: skipped (no client or key)", flush=True)
         return
     try:
+        print("Pinging LLM Proxy...", flush=True)
         client = OpenAI(
             base_url=API_BASE_URL,
             api_key=API_KEY,
@@ -50,8 +52,9 @@ def ping_llm_proxy():
             messages=[{"role": "user", "content": "ping"}],
             max_tokens=5,
         )
-    except Exception:
-        pass
+        print("✓ LLM Proxy connection verified", flush=True)
+    except Exception as e:
+        print(f"LLM Proxy: failed ({e}), continuing", flush=True)
 
 
 def random_action():
