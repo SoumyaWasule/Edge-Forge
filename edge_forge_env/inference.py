@@ -198,7 +198,8 @@ def main():
                 best_cov = len(res["branches"])
                 best_result = res
 
-        score = min(len(all_branches) / 19, 1.0)
+        raw_score = len(all_branches) / 19.0
+        score = max(0.01, min(raw_score, 0.99))
         success = "stateful_crash" in all_branches
 
     except Exception:
