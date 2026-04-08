@@ -1,14 +1,16 @@
 name: edge_forge_env
-description: RL environment for synthetic test data generation and edge-case discovery
 version: 0.1.0
-entrypoint: server.app:app
+description: >
+  RL environment for synthetic test data generation and edge-case discovery.
+  Agents must explore API endpoints, trigger validation bugs, maximize branch
+  coverage, and discover stateful crash sequences.
 tasks:
   - id: easy_task
-    name: "Trigger SSN Error"
-    grader: tasks:grade_easy
+    difficulty: easy
   - id: medium_task
-    name: "Maximize Coverage"
-    grader: tasks:grade_medium
+    difficulty: medium
   - id: hard_task
-    name: "Stateful Crash Trap"
-    grader: tasks:grade_hard
+    difficulty: hard
+api:
+  reset: /reset
+  step: /step
