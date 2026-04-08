@@ -32,7 +32,64 @@ except ImportError:
     from server.edge_forge_env_environment import EdgeForgeEnvironment
 
 
-#  Create base app (registers schema, health, WS, MCP, etc.) 
+# ================================================================
+# GRADER FUNCTIONS (module-level, for validator discovery)
+# ================================================================
+def grade_easy(observation):
+    """Grade easy task: discover SSN format bug."""
+    try:
+        if isinstance(observation, dict):
+            branches = observation.get("covered_branches", [])
+        else:
+            branches = getattr(observation, "covered_branches", [])
+        return 0.99 if "ssn_format_bug" in branches else 0.01
+    except Exception:
+        return 0.01
+
+
+def grade_medium(observation):
+    """Grade medium task: branch coverage ratio."""
+    try:
+        if isinstance(observation, dict):
+            branches = observation.get("covered_branches", [])
+        else:
+            branches = getattr(observation, "covered_branches", [])
+        raw = len(branches) / 19.0
+        return max(0.01, min(raw, 0.99))
+    except Exception:
+        return 0.01
+
+
+def grade_hard(observation):
+    """Grade hard task: trigger stateful crash."""
+    try:
+        if isinstance(observation, dict):
+            branches = observation.get("covered_branches", [])
+        else:
+            branches = getattr(observation, "covered_branches", [])
+        return 0.99 if "stateful_crash" in branches else 0.01
+    except Exception:
+        return 0.01
+
+
+# ================================================================
+# TASKS — module-level list for validator discovery
+# ================================================================
+TASKS = [
+    {"id": "easy_task", "name": "Trigger SSN Error", "grader": grade_easy},
+    {"id": "medium_task", "name": "Maximize Coverage", "grader": grade_medium},
+    {"id": "hard_task", "name": "Stateful Crash Trap", "grader": grade_hard},
+]
+
+
+def get_tasks():
+    """Return task definitions with bound graders."""
+    return TASKS
+
+
+# ================================================================
+# Create base app (registers schema, health, WS, MCP, etc.)
+# ================================================================
 app = create_app(
     EdgeForgeEnvironment,
     EdgeForgeAction,
@@ -42,9 +99,7 @@ app = create_app(
 )
 
 
-#  Remove framework's stateless /reset and /step routes 
-# The OpenEnv framework registers these as stateless (fresh env per request).
-# We need to replace them with stateful versions for multi-step episodes.
+# Remove framework's stateless /reset and /step routes
 _routes_to_remove = {"/reset", "/step"}
 app.routes[:] = [
     route for route in app.routes
@@ -52,7 +107,7 @@ app.routes[:] = [
 ]
 
 
-#  Persistent environment for stateful HTTP episodes 
+# Persistent environment for stateful HTTP episodes
 _env_lock = threading.Lock()
 _env_instance: EdgeForgeEnvironment = EdgeForgeEnvironment()
 
@@ -78,9 +133,6 @@ async def reset_stateful(request: dict = {}):
 )
 async def step_stateful(request: dict = {}):
     """Execute an action in the persistent environment."""
-    # Support both formats:
-    # 1. {"action": {"action_type": ...}} (OpenEnv StepRequest)
-    # 2. {"action_type": ...} (direct inference)
     if "action" in request:
         action_data = request["action"]
     elif "action_type" in request:
@@ -99,27 +151,11 @@ async def step_stateful(request: dict = {}):
     tags=["Tasks"],
     summary="List available tasks with graders",
 )
-async def list_tasks():
+async def list_tasks_endpoint():
     """Return task definitions with grader status."""
     return [
-        {
-            "id": "easy_task",
-            "name": "easy",
-            "description": "Discover the SSN format validation bug via sequential API calls",
-            "has_grader": True,
-        },
-        {
-            "id": "medium_task",
-            "name": "medium",
-            "description": "Maximize branch coverage across 19 code paths",
-            "has_grader": True,
-        },
-        {
-            "id": "hard_task",
-            "name": "hard",
-            "description": "Trigger the stateful crash via the account lifecycle sequence",
-            "has_grader": True,
-        },
+        {"id": t["id"], "name": t["name"], "has_grader": True}
+        for t in TASKS
     ]
 
 
@@ -132,15 +168,14 @@ async def grade_task(request: dict = {}):
     """Grade a task using the current environment state."""
     task_id = request.get("task_id", "")
     with _env_lock:
-        if task_id == "easy_task":
-            score = _env_instance.grade_easy()
-        elif task_id == "medium_task":
-            score = _env_instance.grade_medium()
-        elif task_id == "hard_task":
-            score = _env_instance.grade_hard()
-        else:
-            return {"error": f"Unknown task_id: {task_id}", "score": 0.01}
-    return {"task_id": task_id, "score": score}
+        obs = {
+            "covered_branches": list(_env_instance.state.get("covered_branches", []))
+            if _env_instance.state else []
+        }
+    for t in TASKS:
+        if t["id"] == task_id:
+            return {"task_id": task_id, "score": t["grader"](obs)}
+    return {"error": f"Unknown task_id: {task_id}", "score": 0.01}
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):
