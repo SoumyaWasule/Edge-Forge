@@ -124,10 +124,16 @@ def run_episode(global_offset=0):
             flush=True,
         )
 
+    if step_count == 0:
+        print(
+            f"[STEP] step={global_offset + 1} action=RESET reward=0.00 done=true error=null",
+            flush=True,
+        )
+
     return {
         "branches": branches,
-        "steps": step_count,
-        "rewards": rewards,
+        "steps": max(step_count, 1),
+        "rewards": rewards if rewards else [0.0],
         "obs": obs,
     }
 
