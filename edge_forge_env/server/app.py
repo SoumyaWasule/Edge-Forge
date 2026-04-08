@@ -78,7 +78,15 @@ async def reset_stateful(request: dict = {}):
 )
 async def step_stateful(request: dict = {}):
     """Execute an action in the persistent environment."""
-    action_data = request.get("action", {})
+    # Support both formats:
+    # 1. {"action": {"action_type": ...}} (OpenEnv StepRequest)
+    # 2. {"action_type": ...} (direct inference)
+    if "action" in request:
+        action_data = request["action"]
+    elif "action_type" in request:
+        action_data = request
+    else:
+        action_data = request.get("action", {})
     action = EdgeForgeAction(**action_data)
 
     with _env_lock:
