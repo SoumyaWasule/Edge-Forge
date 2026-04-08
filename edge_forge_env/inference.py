@@ -110,10 +110,10 @@ def run_episode(global_offset=0):
         total_reward += reward
         rewards.append(reward)
 
-        branches |= set(obs.get("covered_branches", []))
+        branches |= set(obs.get("covered_branches") or [])
 
         err = obs.get("last_error")
-        error_val = err if err else "null"
+        error_val = str(err) if err else "null"
 
         print(
             f"[STEP] step={global_offset + step_count} "
