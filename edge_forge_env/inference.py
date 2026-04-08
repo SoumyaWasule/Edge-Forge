@@ -61,23 +61,12 @@ def random_action():
         return {"action_type": "RESET"}
 
 
-def wait_for_server():
-    """Wait for the environment server to be ready."""
-    for _ in range(10):
-        try:
-            requests.get(f"{BASE_URL}/docs", timeout=2)
-            return True
-        except Exception:
-            time.sleep(1)
-    return False
-
-
 def reset_env():
     try:
         response = requests.post(f"{BASE_URL}/reset", json={}, timeout=5)
         response.raise_for_status()
         return response.json()
-    except Exception:
+    except:
         return {}
 
 
@@ -136,11 +125,10 @@ def run_episode(episode_num, global_step_offset=0, verbose=True):
             }
             reward = 0.0
             done = True
-            step_count += 1
-            rewards_list.append(reward)
-            global_step = global_step_offset + step_count
+            global_step = global_step_offset + step_count + 1
 
             action_str = format_action(action)
+
             print(f"[STEP] step={global_step} action={action_str} reward={reward:.2f} done=true error=invalid_response", flush=True)
             break
 
@@ -160,9 +148,9 @@ def run_episode(episode_num, global_step_offset=0, verbose=True):
             action_str = format_action(action)
             
             # Required structured log format
-            err = obs.get('last_error')
-            error_val = err if err else "null"
-            print(f"[STEP] step={global_step} action={action_str} reward={reward:.2f} done={str(done).lower()} error={error_val}")
+            err = obs.get('last_error') 
+            error_val = f'"{err}"' if err else "null"
+            print(f"[STEP] step={global_step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}")
 
             if new_branches:
                 branch_str = f" {GREEN}🟢 NEW: {', '.join(new_branches)}{RESET}"
@@ -217,13 +205,22 @@ def _coverage_bar(covered, total, width=20):
         return f"{RED}[{bar}] {pct:.0f}%{RESET}"
 
 
-def main():
-    print(f"[START] task=edge_forge env=openenv model={MODEL_NAME}", flush=True)
+def wait_for_server():
+    for _ in range(10):
+        try:
+            requests.get(f"{BASE_URL}/docs", timeout=2)
+            return True
+        except:
+            time.sleep(1)
+    return False
 
+
+def main():
     if not wait_for_server():
-        print("[END] success=false steps=0 score=0.00 rewards=0.00", flush=True)
+        print("[END] success=false steps=0 score=0.00 rewards=0.00")
         return
 
+    print(f"[START] task=edge_forge env=openenv model={MODEL_NAME}")
     print(f"\n{BOLD}{MAGENTA}🔥 EDGE-FORGE — Baseline Random Agent{RESET}")
     print(f"{DIM}   Autonomous Synthetic Staging Engine{RESET}")
     print(f"{DIM}   Testing random policy against 19-branch application...{RESET}")
