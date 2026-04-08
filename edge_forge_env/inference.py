@@ -61,18 +61,45 @@ def random_action():
         return {"action_type": "RESET"}
 
 
+def wait_for_server():
+    """Wait for the environment server to be ready."""
+    for _ in range(10):
+        try:
+            requests.get(f"{BASE_URL}/docs", timeout=2)
+            return True
+        except Exception:
+            time.sleep(1)
+    return False
+
+
 def reset_env():
-    response = requests.post(f"{BASE_URL}/reset", json={})
-    return response.json()
+    try:
+        response = requests.post(f"{BASE_URL}/reset", json={}, timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return {}
 
 
 def step_env(action):
-    response = requests.post(f"{BASE_URL}/step", json={"action": action})
     try:
+        response = requests.post(
+            f"{BASE_URL}/step",
+            json={"action": action},
+            timeout=5
+        )
+        response.raise_for_status()
         return response.json()
-    except Exception:
-        print(f"{RED}❌ RAW RESPONSE: {response.text}{RESET}")
-        raise
+    except Exception as e:
+        return {
+            "observation": {
+                "covered_branches": [],
+                "last_status": 0,
+                "last_error": str(e)
+            },
+            "reward": 0.0,
+            "done": True
+        }
 
 
 def format_action(action):
@@ -102,8 +129,20 @@ def run_episode(episode_num, global_step_offset=0, verbose=True):
         result = step_env(action)
 
         if "observation" not in result:
-            print(f"{RED}❌ Invalid response: {result}{RESET}")
-            raise Exception("Step response missing observation")
+            obs = {
+                "covered_branches": [],
+                "last_status": 0,
+                "last_error": "invalid_response"
+            }
+            reward = 0.0
+            done = True
+            step_count += 1
+            rewards_list.append(reward)
+            global_step = global_step_offset + step_count
+
+            action_str = format_action(action)
+            print(f"[STEP] step={global_step} action={action_str} reward={reward:.2f} done=true error=invalid_response", flush=True)
+            break
 
         obs = result["observation"]
         reward = float(result.get("reward", 0))
@@ -179,7 +218,12 @@ def _coverage_bar(covered, total, width=20):
 
 
 def main():
-    print(f"[START] task=edge_forge env=openenv model={MODEL_NAME}")
+    print(f"[START] task=edge_forge env=openenv model={MODEL_NAME}", flush=True)
+
+    if not wait_for_server():
+        print("[END] success=false steps=0 score=0.00 rewards=0.00", flush=True)
+        return
+
     print(f"\n{BOLD}{MAGENTA}🔥 EDGE-FORGE — Baseline Random Agent{RESET}")
     print(f"{DIM}   Autonomous Synthetic Staging Engine{RESET}")
     print(f"{DIM}   Testing random policy against 19-branch application...{RESET}")
