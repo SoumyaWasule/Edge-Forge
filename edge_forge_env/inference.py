@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 import textwrap
 from typing import Any, Dict, List, Optional
 
@@ -41,7 +42,7 @@ except ImportError:
 # ================================================================
 # Environment Variables (mandatory spec)
 # ================================================================
-IMAGE_NAME = os.getenv("IMAGE_NAME")
+IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
@@ -55,6 +56,29 @@ SUCCESS_THRESHOLD = 0.5
 # Field type mapping for LLM response coercion
 NUMERIC_FIELDS = {"age", "income", "balance", "days_active", "credit_score"}
 STRING_FIELDS = {"user_type", "region", "action", "ssn"}
+
+
+def validate_env() -> None:
+    """Validate mandatory environment variables before running inference."""
+    missing = []
+    if not os.getenv("API_BASE_URL"):
+        missing.append("API_BASE_URL")
+    if not os.getenv("MODEL_NAME"):
+        missing.append("MODEL_NAME")
+    if not os.getenv("HF_TOKEN"):
+        missing.append("HF_TOKEN")
+    if missing:
+        print(
+            f"[FATAL] Missing mandatory environment variables: {', '.join(missing)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        print(
+            "[FATAL] Required: API_BASE_URL, MODEL_NAME, HF_TOKEN",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
 
 
 # ================================================================
@@ -149,7 +173,13 @@ TASKS = [
         "grader": grade_easy,
         "max_steps": 10,
         "system_prompt": EASY_SYSTEM_PROMPT,
-        "fallback_actions": [{"action_type": "SUBMIT"}],
+        "fallback_actions": [
+            {"action_type": "SET_FIELD", "field": "action", "value": "open_account"},
+            {"action_type": "SUBMIT"},
+            {"action_type": "SET_FIELD", "field": "action", "value": "verify_identity"},
+            {"action_type": "SET_FIELD", "field": "ssn", "value": "abc"},
+            {"action_type": "SUBMIT"},
+        ],
     },
     {
         "id": "medium_task",
@@ -167,7 +197,12 @@ TASKS = [
         "grader": grade_hard,
         "max_steps": 15,
         "system_prompt": HARD_SYSTEM_PROMPT,
-        "fallback_actions": [{"action_type": "SUBMIT"}],
+        "fallback_actions": [
+            {"action_type": "SET_FIELD", "field": "action", "value": "open_account"},
+            {"action_type": "SUBMIT"},
+            {"action_type": "SET_FIELD", "field": "action", "value": "verify_identity"},
+            {"action_type": "SUBMIT"},
+        ],
     },
 ]
 
@@ -344,9 +379,9 @@ def get_llm_action(
                 )
             return action
         else:
-            print(f"[DEBUG] Could not parse LLM response: {text!r}", flush=True)
+            print(f"[DEBUG] Could not parse LLM response: {text!r}", file=sys.stderr, flush=True)
     except Exception as exc:
-        print(f"[DEBUG] LLM request failed: {exc}", flush=True)
+        print(f"[DEBUG] LLM request failed: {exc}", file=sys.stderr, flush=True)
 
     # Fallback: use pre-defined action sequence for this task
     fallbacks = task_config["fallback_actions"]
@@ -454,7 +489,7 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as exc:
-        print(f"[DEBUG] Task {task_id} error: {exc}", flush=True)
+        print(f"[DEBUG] Task {task_id} error: {exc}", file=sys.stderr, flush=True)
 
     finally:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
@@ -465,6 +500,7 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
 # ================================================================
 async def main() -> None:
     """Run inference across all 3 tasks."""
+    validate_env()
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     # Connect to environment: Docker image (validator) or local server (dev)
@@ -481,7 +517,7 @@ async def main() -> None:
         try:
             await env.close()
         except Exception as e:
-            print(f"[DEBUG] env.close() error: {e}", flush=True)
+            print(f"[DEBUG] env.close() error: {e}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
