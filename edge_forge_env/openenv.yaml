@@ -1,9 +1,13 @@
+spec_version: 1
 name: edge_forge_env
 version: 0.1.0
 description: >
   RL environment for synthetic test data generation and edge-case discovery.
   Agents must explore API endpoints, trigger validation bugs, maximize branch
   coverage, and discover stateful crash sequences.
+runtime: fastapi
+app: server.app:app
+port: 8000
 tasks:
   - id: easy_task
     difficulty: easy

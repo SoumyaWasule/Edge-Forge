@@ -61,14 +61,12 @@ STRING_FIELDS = {"user_type", "region", "action", "ssn"}
 # Task Definitions
 # ================================================================
 EASY_SYSTEM_PROMPT = textwrap.dedent("""\
-    You are an agent exploring the Edge Forge environment — a synthetic test data
-    system for a loan/user processing API. Your goal is to trigger the SSN format bug.
+    You are an agent interacting with a loan/user processing API test environment.
+    Your goal is to discover edge cases by submitting different input combinations.
 
-    HOW TO TRIGGER IT:
-    1. First, set the "action" field to "open_account" and SUBMIT to create a pending account.
-    2. Then, set the "action" field to "verify_identity" AND set "ssn" to a non-numeric
-       string like "invalid".
-    3. SUBMIT to trigger the bug.
+    The API processes user data and may behave unexpectedly under certain conditions.
+    Explore the "action" field (try "open_account" and "verify_identity") and the
+    "ssn" field with various value types. Some combinations produce interesting results.
 
     AVAILABLE ACTIONS (respond with exactly one JSON object per turn):
     - {"action_type": "SET_FIELD", "field": "<name>", "value": <val>}
@@ -81,27 +79,21 @@ EASY_SYSTEM_PROMPT = textwrap.dedent("""\
     - region: string ("us" or "restricted")
     - action: string ("open_account" or "verify_identity")
     - ssn: string or integer
+
+    Try different field values and sequences. Observe the errors and status codes
+    returned to guide your next action.
 
     RESPOND WITH ONLY A JSON OBJECT. No explanation, no markdown, just JSON.""")
 
 MEDIUM_SYSTEM_PROMPT = textwrap.dedent("""\
-    You are an agent exploring the Edge Forge environment — a synthetic test data
-    system for a loan/user processing API. Your goal is to maximize branch coverage
-    by discovering as many code paths as possible.
+    You are an agent exploring a loan/user processing API test environment.
+    Your goal is to maximize branch coverage — discover as many distinct code
+    paths as possible by submitting varied input combinations.
 
-    The API has 19 branches across these categories:
-    - Missing field validation (missing age, missing income)
-    - Age/income eligibility (underage, negative income)
-    - Financial risk (extreme debt, terrible credit, enterprise debt recovery)
-    - User type paths (enterprise path, enterprise premium)
-    - Region checks (restricted region, restricted region override)
-    - New user handling (days_active < 10)
-    - Stateful API (account opened, verify attempt, account verified, stateful crash, ssn format bug)
-    - Default approval path
-
-    STRATEGY: Try different field combinations systematically. After each SUBMIT,
-    check which branches were covered and try new combinations to hit uncovered paths.
-    Use RESET between submissions to clear the input and construct new payloads.
+    The API has many branches triggered by different field values and combinations.
+    Explore systematically: vary one field at a time, observe what changes in
+    covered_branches, then try something new. Use RESET between attempts to
+    start fresh.
 
     AVAILABLE ACTIONS (respond with exactly one JSON object per turn):
     - {"action_type": "SET_FIELD", "field": "<name>", "value": <val>}
@@ -109,31 +101,29 @@ MEDIUM_SYSTEM_PROMPT = textwrap.dedent("""\
     - {"action_type": "RESET"}
 
     VALID FIELDS & TYPES:
-    - age: integer (try: 10, 25, 50)
-    - income: integer (try: -500, 0, 5000, 30000, 80000, 120000)
-    - balance: integer (try: -2000, -500, 0, 100, 3000)
-    - days_active: integer (try: 0, 5, 50, 200, 400)
-    - credit_score: integer (try: 0, 200, 500, 750)
+    - age: integer
+    - income: integer (can be negative)
+    - balance: integer (can be negative)
+    - days_active: integer
+    - credit_score: integer
     - user_type: string ("normal" or "enterprise")
     - region: string ("us" or "restricted")
     - action: string ("open_account" or "verify_identity")
-    - ssn: string or integer (try: "invalid", "123456789", 12345)
+    - ssn: string or integer
+
+    After each SUBMIT, check which new branches appeared in covered_branches.
+    Prioritize trying combinations you haven't explored yet.
 
     RESPOND WITH ONLY A JSON OBJECT. No explanation, no markdown, just JSON.""")
 
 HARD_SYSTEM_PROMPT = textwrap.dedent("""\
-    You are an agent exploring the Edge Forge environment — a synthetic test data
-    system for a loan/user processing API. Your goal is to trigger the stateful crash bug.
+    You are an agent interacting with a stateful loan/user processing API.
+    Your goal is to discover a crash condition in the API.
 
-    HOW TO TRIGGER IT:
-    1. First, set the "action" field to "open_account" and SUBMIT — this creates
-       a pending account in the application state.
-    2. Then, set the "action" field to "verify_identity" (do NOT set any ssn field).
-    3. SUBMIT — this triggers the crash because SSN is missing during pending verification.
-
-    The key insight: the crash happens when verify_identity is called on a pending
-    account WITHOUT providing an SSN. You must do open_account FIRST to set the
-    internal status to "pending".
+    The API maintains state between submissions within a session. Certain sequences
+    of actions can leave the API in an inconsistent state that causes crashes on
+    subsequent calls. Think about what happens when you initiate a process but
+    don't complete it properly before making a follow-up request.
 
     AVAILABLE ACTIONS (respond with exactly one JSON object per turn):
     - {"action_type": "SET_FIELD", "field": "<name>", "value": <val>}
@@ -146,6 +136,10 @@ HARD_SYSTEM_PROMPT = textwrap.dedent("""\
     - region: string ("us" or "restricted")
     - action: string ("open_account" or "verify_identity")
     - ssn: string or integer
+
+    Focus on the stateful "action" field. Explore multi-step workflows and observe
+    how the API state changes. What happens if a step in the workflow is skipped
+    or a required field is omitted?
 
     RESPOND WITH ONLY A JSON OBJECT. No explanation, no markdown, just JSON.""")
 
@@ -162,7 +156,11 @@ TASKS = [
         "grader": grade_medium,
         "max_steps": 30,
         "system_prompt": MEDIUM_SYSTEM_PROMPT,
-        "fallback_actions": [{"action_type": "SUBMIT"}],
+        "fallback_actions": [
+            {"action_type": "SET_FIELD", "field": "age", "value": 25},
+            {"action_type": "SET_FIELD", "field": "income", "value": 50000},
+            {"action_type": "SUBMIT"},
+        ],
     },
     {
         "id": "hard_task",
@@ -172,6 +170,7 @@ TASKS = [
         "fallback_actions": [{"action_type": "SUBMIT"}],
     },
 ]
+
 
 
 # ================================================================
