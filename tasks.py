@@ -2,45 +2,49 @@
 Tasks and graders for Edge Forge Environment.
 
 Each grader returns a float in (0, 1) exclusive — strictly between 0.01 and 0.99.
+Graders verify actual API response messages (observable outcomes)
+rather than internally-tracked branch labels.
 """
 
+from typing import Any
 
-TOTAL_BRANCHES = 19
+
+# Total number of unique API response outcomes across all code paths
+TOTAL_OUTCOMES = 19
+
+
+def _get_submit_outcomes(state: Any) -> list:
+    """Extract submit_outcomes from state (dict or object)."""
+    if isinstance(state, dict):
+        return state.get("submit_outcomes", [])
+    return getattr(state, "submit_outcomes", [])
 
 
 def grade_easy(observation):
-    """Grade easy task: discover SSN format bug."""
+    """Grade easy task: verify the agent triggered a real SSN format validation error."""
     try:
-        if isinstance(observation, dict):
-            branches = observation.get("covered_branches", [])
-        else:
-            branches = getattr(observation, "covered_branches", [])
-        return 0.99 if "ssn_format_bug" in branches else 0.01
+        outcomes = _get_submit_outcomes(observation)
+        return 0.99 if "SSN must be numeric" in outcomes else 0.01
     except Exception:
         return 0.01
 
 
 def grade_medium(observation):
-    """Grade medium task: branch coverage ratio."""
+    """Grade medium task: score based on diversity of actual API outcomes triggered."""
     try:
-        if isinstance(observation, dict):
-            branches = observation.get("covered_branches", [])
-        else:
-            branches = getattr(observation, "covered_branches", [])
-        raw = len(branches) / TOTAL_BRANCHES
+        outcomes = _get_submit_outcomes(observation)
+        unique = len(set(outcomes))
+        raw = unique / TOTAL_OUTCOMES
         return max(0.01, min(raw, 0.99))
     except Exception:
         return 0.01
 
 
 def grade_hard(observation):
-    """Grade hard task: trigger stateful crash."""
+    """Grade hard task: verify the agent triggered the real SSN-missing crash."""
     try:
-        if isinstance(observation, dict):
-            branches = observation.get("covered_branches", [])
-        else:
-            branches = getattr(observation, "covered_branches", [])
-        return 0.99 if "stateful_crash" in branches else 0.01
+        outcomes = _get_submit_outcomes(observation)
+        return 0.99 if "SSN missing during pending verification" in outcomes else 0.01
     except Exception:
         return 0.01
 

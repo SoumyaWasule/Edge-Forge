@@ -155,95 +155,21 @@ TASKS = [
         "grader": grade_easy,
         "max_steps": 10,
         "system_prompt": EASY_SYSTEM_PROMPT,
-        "fallback_actions": [
-            {"action_type": "SET_FIELD", "field": "action", "value": "open_account"},
-            {"action_type": "SUBMIT"},
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "action", "value": "verify_identity"},
-            {"action_type": "SET_FIELD", "field": "ssn", "value": "invalid"},
-            {"action_type": "SUBMIT"},
-        ],
+        "fallback_actions": [{"action_type": "SUBMIT"}],
     },
     {
         "id": "medium_task",
         "grader": grade_medium,
         "max_steps": 30,
         "system_prompt": MEDIUM_SYSTEM_PROMPT,
-        "fallback_actions": [
-            # 1. missing_age: submit with no fields
-            {"action_type": "SUBMIT"},
-            # 2. missing_income: set age only → submit
-            {"action_type": "SET_FIELD", "field": "age", "value": 25},
-            {"action_type": "SUBMIT"},
-            # 3. underage: age < threshold → submit
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 10},
-            {"action_type": "SET_FIELD", "field": "income", "value": 50000},
-            {"action_type": "SUBMIT"},
-            # 4. negative_income
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 25},
-            {"action_type": "SET_FIELD", "field": "income", "value": -500},
-            {"action_type": "SUBMIT"},
-            # 5. extreme_debt + enterprise_debt_recovery
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 30},
-            {"action_type": "SET_FIELD", "field": "income", "value": 80000},
-            {"action_type": "SET_FIELD", "field": "balance", "value": -2000},
-            {"action_type": "SET_FIELD", "field": "user_type", "value": "enterprise"},
-            {"action_type": "SUBMIT"},
-            # 6. terrible_credit
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 30},
-            {"action_type": "SET_FIELD", "field": "income", "value": 50000},
-            {"action_type": "SET_FIELD", "field": "credit_score", "value": 200},
-            {"action_type": "SUBMIT"},
-            # 7. enterprise_path + enterprise_premium
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 30},
-            {"action_type": "SET_FIELD", "field": "income", "value": 120000},
-            {"action_type": "SET_FIELD", "field": "user_type", "value": "enterprise"},
-            {"action_type": "SUBMIT"},
-            # 8. new_user (days_active < 10)
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 30},
-            {"action_type": "SET_FIELD", "field": "income", "value": 50000},
-            {"action_type": "SET_FIELD", "field": "days_active", "value": 5},
-            {"action_type": "SUBMIT"},
-            # 9. approved (default path)
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 30},
-            {"action_type": "SET_FIELD", "field": "income", "value": 50000},
-            {"action_type": "SET_FIELD", "field": "days_active", "value": 200},
-            {"action_type": "SUBMIT"},
-            # 10. restricted_region
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "age", "value": 30},
-            {"action_type": "SET_FIELD", "field": "income", "value": 50000},
-            {"action_type": "SET_FIELD", "field": "region", "value": "restricted"},
-            {"action_type": "SUBMIT"},
-            # 11. account_opened (stateful API)
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "action", "value": "open_account"},
-            {"action_type": "SUBMIT"},
-            # 12. stateful_crash (verify without ssn on pending)
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "action", "value": "verify_identity"},
-            {"action_type": "SUBMIT"},
-        ],
+        "fallback_actions": [{"action_type": "SUBMIT"}],
     },
     {
         "id": "hard_task",
         "grader": grade_hard,
         "max_steps": 15,
         "system_prompt": HARD_SYSTEM_PROMPT,
-        "fallback_actions": [
-            {"action_type": "SET_FIELD", "field": "action", "value": "open_account"},
-            {"action_type": "SUBMIT"},
-            {"action_type": "RESET"},
-            {"action_type": "SET_FIELD", "field": "action", "value": "verify_identity"},
-            {"action_type": "SUBMIT"},
-        ],
+        "fallback_actions": [{"action_type": "SUBMIT"}],
     },
 ]
 
@@ -447,6 +373,7 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
     score = 0.0
     success = False
     covered_branches: List[str] = []
+    submit_outcomes: List[str] = []
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
@@ -457,6 +384,7 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
         covered_branches = result.observation.covered_branches
         current_input = result.observation.current_input
         last_error = result.observation.last_error
+        submit_outcomes = result.observation.submit_outcomes
         last_reward = 0.0
         history: List[str] = []
 
@@ -497,6 +425,7 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
             last_reward = reward
             covered_branches = result.observation.covered_branches
             current_input = result.observation.current_input
+            submit_outcomes = result.observation.submit_outcomes
             last_error = error
 
             # Emit [STEP] log
@@ -516,8 +445,11 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
             if done:
                 break
 
-        # Grade using the task-specific grader on the final observation
-        final_obs = {"covered_branches": covered_branches}
+        # Grade using actual API outcomes (not self-reported branch labels)
+        final_obs = {
+            "submit_outcomes": submit_outcomes,
+            "covered_branches": covered_branches,
+        }
         score = grader(final_obs)
         score = max(0.0, min(score, 1.0))
         success = score >= SUCCESS_THRESHOLD

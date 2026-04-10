@@ -77,9 +77,7 @@ class EdgeForgeEnv(
             covered_branches=obs_data.get("covered_branches", []),
             current_input=obs_data.get("current_input", {}),
             last_error=obs_data.get("last_error"),
-            reward=payload.get("reward"),
-            done=payload.get("done", False),
-            metadata=obs_data.get("metadata", {}),
+            submit_outcomes=obs_data.get("submit_outcomes", []),
         )
 
         return StepResult(

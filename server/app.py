@@ -34,40 +34,44 @@ except ImportError:
 
 # ================================================================
 # GRADER FUNCTIONS (module-level, for validator discovery)
+# Graders verify actual API response messages (observable outcomes)
+# rather than internally-tracked branch labels.
 # ================================================================
+TOTAL_OUTCOMES = 19
+
+
+def _get_submit_outcomes(state):
+    """Extract submit_outcomes from state (dict or object)."""
+    if isinstance(state, dict):
+        return state.get("submit_outcomes", [])
+    return getattr(state, "submit_outcomes", [])
+
+
 def grade_easy(observation):
-    """Grade easy task: discover SSN format bug."""
+    """Grade easy task: verify the agent triggered a real SSN format validation error."""
     try:
-        if isinstance(observation, dict):
-            branches = observation.get("covered_branches", [])
-        else:
-            branches = getattr(observation, "covered_branches", [])
-        return 0.99 if "ssn_format_bug" in branches else 0.01
+        outcomes = _get_submit_outcomes(observation)
+        return 0.99 if "SSN must be numeric" in outcomes else 0.01
     except Exception:
         return 0.01
 
 
 def grade_medium(observation):
-    """Grade medium task: branch coverage ratio."""
+    """Grade medium task: score based on diversity of actual API outcomes triggered."""
     try:
-        if isinstance(observation, dict):
-            branches = observation.get("covered_branches", [])
-        else:
-            branches = getattr(observation, "covered_branches", [])
-        raw = len(branches) / 19.0
+        outcomes = _get_submit_outcomes(observation)
+        unique = len(set(outcomes))
+        raw = unique / TOTAL_OUTCOMES
         return max(0.01, min(raw, 0.99))
     except Exception:
         return 0.01
 
 
 def grade_hard(observation):
-    """Grade hard task: trigger stateful crash."""
+    """Grade hard task: verify the agent triggered the real SSN-missing crash."""
     try:
-        if isinstance(observation, dict):
-            branches = observation.get("covered_branches", [])
-        else:
-            branches = getattr(observation, "covered_branches", [])
-        return 0.99 if "stateful_crash" in branches else 0.01
+        outcomes = _get_submit_outcomes(observation)
+        return 0.99 if "SSN missing during pending verification" in outcomes else 0.01
     except Exception:
         return 0.01
 
@@ -99,8 +103,9 @@ app = create_app(
 )
 
 
-# Remove framework's stateless /reset and /step routes
-_routes_to_remove = {"/reset", "/step"}
+# Remove framework's stateless /reset, /step, and /state routes
+# We replace them with stateful versions that share _env_instance
+_routes_to_remove = {"/reset", "/step", "/state"}
 app.routes[:] = [
     route for route in app.routes
     if not (hasattr(route, "path") and route.path in _routes_to_remove)
@@ -165,17 +170,36 @@ async def list_tasks_endpoint():
     summary="Grade a specific task",
 )
 async def grade_task(request: dict = {}):
-    """Grade a task using the current environment state."""
+    """Grade a task using actual API outcomes from the current episode."""
     task_id = request.get("task_id", "")
     with _env_lock:
         obs = {
+            "submit_outcomes": list(_env_instance.state.get("submit_outcomes", []))
+            if _env_instance.state else [],
             "covered_branches": list(_env_instance.state.get("covered_branches", []))
-            if _env_instance.state else []
+            if _env_instance.state else [],
         }
     for t in TASKS:
         if t["id"] == task_id:
             return {"task_id": task_id, "score": t["grader"](obs)}
     return {"error": f"Unknown task_id: {task_id}", "score": 0.01}
+
+
+@app.get(
+    "/state",
+    tags=["State Management"],
+    summary="Get current environment state",
+    description="Returns the current episode state including episode_id and step_count.",
+)
+async def get_state():
+    """Return current environment state using the persistent env instance."""
+    with _env_lock:
+        if _env_instance.state is None:
+            return {"episode_id": "", "step_count": 0}
+        return {
+            "episode_id": "current",
+            "step_count": _env_instance.state.get("steps", 0),
+        }
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):

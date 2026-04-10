@@ -46,6 +46,19 @@ def _validate_field(field: str, value: Any) -> bool:
     return isinstance(value, expected)
 
 
+def _summarize_api_result(result: dict) -> str:
+    """Extract the most distinctive string from an API response.
+
+    Graders use these observable API outputs (actual error messages,
+    rejection reasons, etc.) rather than internal branch labels.
+    Each of the 19 API code paths produces a unique summary string.
+    """
+    for key in ("error", "reason", "note", "tier", "account"):
+        if key in result and result[key] is not None:
+            return str(result[key])
+    return f"status:{result.get('status', 'unknown')}"
+
+
 class EdgeForgeEnvironment:
 
     MAX_STEPS = 30
@@ -60,6 +73,19 @@ class EdgeForgeEnvironment:
             description="Autonomous Synthetic Staging Engine with Stateful Bugs"
         )
 
+    def get_state(self):
+        """Return current environment state for OpenEnv spec compliance.
+
+        Called by the framework's built-in /state endpoint.
+        Returns empty state if no episode is active (before first reset).
+        """
+        if self.state is None:
+            return {"episode_id": "", "step_count": 0}
+        return {
+            "episode_id": "current",
+            "step_count": self.state.get("steps", 0),
+        }
+
     # 
     # RESET
     # 
@@ -67,6 +93,7 @@ class EdgeForgeEnvironment:
         self.state = {
             "current_input": {},
             "covered_branches": set(),
+            "submit_outcomes": [],
             "steps": 0,
             "submits": 0,
             "done": False,
@@ -81,6 +108,7 @@ class EdgeForgeEnvironment:
             last_status=0,
             covered_branches=[],
             current_input={},
+            submit_outcomes=[],
         )
 
     # 
@@ -95,6 +123,7 @@ class EdgeForgeEnvironment:
                 covered_branches=list(self.state["covered_branches"]),
                 current_input=self.state["current_input"],
                 last_error="Episode already terminated. Please reset.",
+                submit_outcomes=list(self.state.get("submit_outcomes", [])),
                 reward=0.0,
                 done=True,
                 metadata={},
@@ -166,6 +195,9 @@ class EdgeForgeEnvironment:
             hard_new = new_branches & hard_branches
             reward += len(hard_new) * 25.0
 
+            # Track actual API response for grading (observable outcome)
+            self.state["submit_outcomes"].append(_summarize_api_result(result))
+
             # Clear input after submission
             self.state["current_input"] = {}
 
@@ -194,6 +226,7 @@ class EdgeForgeEnvironment:
             covered_branches=list(self.state["covered_branches"]),
             current_input=self.state["current_input"],
             last_error=error_msg,
+            submit_outcomes=list(self.state.get("submit_outcomes", [])),
             reward=reward,
             done=done,
             metadata=info,

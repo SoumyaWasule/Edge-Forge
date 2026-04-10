@@ -14,3 +14,4 @@ tasks:
 api:
   reset: /reset
   step: /step
+  state: /state

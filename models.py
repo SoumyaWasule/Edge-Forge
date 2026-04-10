@@ -77,3 +77,8 @@ class EdgeForgeObservation(Observation):
         default=None,
         description="Error message if last action caused a failure"
     )
+
+    submit_outcomes: List[str] = Field(
+        default_factory=list,
+        description="Accumulated API response summaries from each submission, used by graders to verify actual API behavior"
+    )
