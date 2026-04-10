@@ -1,0 +1,16 @@
+name: edge_forge_env
+version: 0.1.0
+description: >
+  RL environment for synthetic test data generation and edge-case discovery.
+  Agents must explore API endpoints, trigger validation bugs, maximize branch
+  coverage, and discover stateful crash sequences.
+tasks:
+  - id: easy_task
+    difficulty: easy
+  - id: medium_task
+    difficulty: medium
+  - id: hard_task
+    difficulty: hard
+api:
+  reset: /reset
+  step: /step
