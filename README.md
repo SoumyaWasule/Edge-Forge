@@ -8,12 +8,12 @@ app_port: 8000
 pinned: false
 ---
 
-# Edge-Forge Lite
+# Edge-Forge
 **Autonomous Synthetic Staging Engine with Stateful Bug Discovery**
 
 ![HF Space Status](https://img.shields.io/badge/HF%20Space-Deployed-green?logo=huggingface) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-100%25-brightgreen) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker) ![License](https://img.shields.io/badge/License-BSD_3--Clause-blue)
 
-**Edge-Forge Lite trains agents to autonomously fuzz a stateful loan-processing API, teaching them to chain multi-step payloads (like opening an account before bypassing identity verification) to discover critical production crashes that random fuzzing cannot reach.**
+**Edge-Forge trains agents to autonomously fuzz a stateful loan-processing API, teaching them to chain multi-step payloads (like opening an account before bypassing identity verification) to discover critical production crashes that random fuzzing cannot reach.**
 
 [**View Live on Hugging Face Spaces ↗**](https://huggingface.co/spaces/SoumyaW/edge_forge_env)
 
@@ -21,7 +21,7 @@ pinned: false
 
 ## 💥 The Problem (Why This Matters)
 
-In the real world, developers cannot test against production data due to strict privacy laws like GDPR and SOC2, leaving edge cases dangerously undiscovered. Traditional fuzzing tools blast APIs with random inputs, but they fundamentally fail against **stateful architectures** where bugs only trigger after a specific sequence of valid API calls (e.g., initiating a loan -> entering pending state -> skipping an SSN verification step). When these undiscovered stateful bugs hit production, they cause silent data corruption, system crashes, and blocked user accounts, costing engineering teams thousands of hours in incident response. Edge-Forge Lite frames edge-case discovery as an RL problem, proving that intelligent agents can learn deep API lifecycles and navigate logic thresholds that defeat naive fuzzers.
+In the real world, developers cannot test against production data due to strict privacy laws like GDPR and SOC2, leaving edge cases dangerously undiscovered. Traditional fuzzing tools blast APIs with random inputs, but they fundamentally fail against **stateful architectures** where bugs only trigger after a specific sequence of valid API calls (e.g., initiating a loan -> entering pending state -> skipping an SSN verification step). When these undiscovered stateful bugs hit production, they cause silent data corruption, system crashes, and blocked user accounts, costing engineering teams thousands of hours in incident response. Edge-Forge frames edge-case discovery as an RL problem, proving that intelligent agents can learn deep API lifecycles and navigate logic thresholds that defeat naive fuzzers.
 
 ---
 
@@ -75,7 +75,7 @@ In the real world, developers cannot test against production data due to strict 
   +========================================================================+
 ```
 
-*(Note: Edge-Forge Lite removes OpenEnv's default stateless routers and implements custom thread-safe logic to maintain an internal `_env_instance` for true RL episode pacing.)*
+*(Note: Edge-Forge removes OpenEnv's default stateless routers and implements custom thread-safe logic to maintain an internal `_env_instance` for true RL episode pacing.)*
 
 ---
 
@@ -197,7 +197,7 @@ Visit the live API directly. It fully supports `POST /reset`, `POST /step`, and 
 ## 🧠 Technical Architecture & Novel Design Decisions
 
 **1. Simulating Core Software Engineering Failures**  
-Edge-Forge Lite is designed around the philosophy that good RL environments map to expensive real-world problems. Fuzzing API structures with complex types, mocked privacy restrictions, and state dependencies is a multi-million dollar QA issue. The schema requires process-supervised exploration, rewarding the agent not just for finishing, but for successfully compiling complex dictionary payloads step-by-step.
+Edge-Forge is designed around the philosophy that good RL environments map to expensive real-world problems. Fuzzing API structures with complex types, mocked privacy restrictions, and state dependencies is a multi-million dollar QA issue. The schema requires process-supervised exploration, rewarding the agent not just for finishing, but for successfully compiling complex dictionary payloads step-by-step.
 
 **2. Stateful Session Entanglement**  
 Unlike typical OpenEnv configurations which run strictly as stateless request-response loops, Edge-Forge intentionally patches OpenEnv's stateless HTTP routes inside `app.py`. It uses a threading `_env_lock` natively over `_env_instance` to preserve genuine HTTP session persistence. This structurally allows agents to trigger the deeply embedded `stateful_crash`—a bug that ONLY manifests if the API receives an `open_account` submit, transitions its internal machine to `pending`, and *then* receives a `verify_identity` submit missing an SSN.
@@ -212,7 +212,7 @@ To comply perfectly with the standard SDK boundary, the environment leverages co
 The LLM cannot dump a completed JSON. It must use single-field tools incrementally (`SET_FIELD`), materially retaining memory of its previous actions to plan when to optimally emit the `SUBMIT` action, utilizing `RESET` to pivot its search space dynamically out of deep thresholds.
 
 **6. The Missing Ecosystem Segment**  
-Within the OpenEnv Hub, environments tilt heavily towards pure coding, logical puzzles, or 2D game proxies. Edge-Forge Lite introduces foundational **stateful black-box penetration testing**. It solidly serves as a benchmark for measuring if an LLM can functionally infer hidden system architecture and deliberately break it using chained payloads.
+Within the OpenEnv Hub, environments tilt heavily towards pure coding, logical puzzles, or 2D game proxies. Edge-Forge introduces foundational **stateful black-box penetration testing**. It solidly serves as a benchmark for measuring if an LLM can functionally infer hidden system architecture and deliberately break it using chained payloads.
 
 ---
 
@@ -235,16 +235,16 @@ Within the OpenEnv Hub, environments tilt heavily towards pure coding, logical p
 
 ---
 
-## 🚀 Why Edge-Forge Lite Belongs in the OpenEnv Hub
+## 🚀 Why Edge-Forge Belongs in the OpenEnv Hub
 
-Edge-Forge Lite functionally bridges the structural gap between basic toy logic puzzles and highly complex software QA testbeds. The current OpenEnv registry completely lacks environments dedicated to **stateful API exploration and synthetic payload sequencing**. By permanently including Edge-Forge, Meta researchers can efficiently benchmark model capabilities natively embedded across deep stateful memory retention, strict tool-chaining, and architectural inference, scaling RL agents into rigorous, self-driving QA automation engineers.
+Edge-Forge functionally bridges the structural gap between basic toy logic puzzles and highly complex software QA testbeds. The current OpenEnv registry completely lacks environments dedicated to **stateful API exploration and synthetic payload sequencing**. By permanently including Edge-Forge, Meta researchers can efficiently benchmark model capabilities natively embedded across deep stateful memory retention, strict tool-chaining, and architectural inference, scaling RL agents into rigorous, self-driving QA automation engineers.
 
 ---
 
 ## 📁 Project Structure
 
 ```text
-edge-forge-lite/
+edge-forge/
 ├── openenv.yaml          # Environment specification manifest
 ├── Dockerfile            # Container definition utilizing uv package management
 ├── inference.py          # Compliant OpenEnv standard LLM-agent inference loop
