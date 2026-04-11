@@ -24,6 +24,9 @@ from edge_forge_env.mock_api import process_application, TOTAL_BRANCHES
 from openenv.core.env_server.types import EnvironmentMetadata
 
 
+# Must match TOTAL_OUTCOMES in app.py, tasks.py, graders.py
+TOTAL_OUTCOMES = 19
+
 #  Input validation 
 VALID_FIELDS = {
     "age": (int, float),
@@ -236,29 +239,32 @@ class EdgeForgeEnvironment:
 
     # ——————————————————————————————
     # GRADERS (bound to environment instance)
+    # Graders check submit_outcomes (observable API responses)
+    # to stay consistent with module-level graders in app.py
     # ——————————————————————————————
     def grade_easy(self):
-        """Grade easy task: discover SSN format bug."""
+        """Grade easy task: verify SSN format validation error was triggered."""
         try:
-            branches = list(self.state.get("covered_branches", []) if self.state else [])
-            return 0.99 if "ssn_format_bug" in branches else 0.01
+            outcomes = list(self.state.get("submit_outcomes", []) if self.state else [])
+            return 0.99 if "SSN must be numeric" in outcomes else 0.01
         except Exception:
             return 0.01
 
     def grade_medium(self):
-        """Grade medium task: branch coverage ratio."""
+        """Grade medium task: diversity of API outcomes triggered."""
         try:
-            branches = list(self.state.get("covered_branches", []) if self.state else [])
-            raw = len(branches) / TOTAL_BRANCHES
+            outcomes = list(self.state.get("submit_outcomes", []) if self.state else [])
+            unique = len(set(outcomes))
+            raw = unique / TOTAL_OUTCOMES
             return max(0.01, min(raw, 0.99))
         except Exception:
             return 0.01
 
     def grade_hard(self):
-        """Grade hard task: trigger stateful crash."""
+        """Grade hard task: verify the stateful crash was triggered."""
         try:
-            branches = list(self.state.get("covered_branches", []) if self.state else [])
-            return 0.99 if "stateful_crash" in branches else 0.01
+            outcomes = list(self.state.get("submit_outcomes", []) if self.state else [])
+            return 0.99 if "SSN missing during pending verification" in outcomes else 0.01
         except Exception:
             return 0.01
 
