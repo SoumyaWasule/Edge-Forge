@@ -57,28 +57,10 @@ SUCCESS_THRESHOLD = 0.5
 NUMERIC_FIELDS = {"age", "income", "balance", "days_active", "credit_score"}
 STRING_FIELDS = {"user_type", "region", "action", "ssn"}
 
-
-def validate_env() -> None:
-    """Validate mandatory environment variables before running inference."""
-    missing = []
-    if not os.getenv("API_BASE_URL"):
-        missing.append("API_BASE_URL")
-    if not os.getenv("MODEL_NAME"):
-        missing.append("MODEL_NAME")
-    if not os.getenv("HF_TOKEN"):
-        missing.append("HF_TOKEN")
-    if missing:
-        print(
-            f"[FATAL] Missing mandatory environment variables: {', '.join(missing)}",
-            file=sys.stderr,
-            flush=True,
-        )
-        print(
-            "[FATAL] Required: API_BASE_URL, MODEL_NAME, HF_TOKEN",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
+# Warn (never crash) if HF_TOKEN is missing — LLM calls will fail but fallback handles it
+if not API_KEY:
+    print("[DEBUG] WARNING: HF_TOKEN/API_KEY not set. LLM calls will fail, using fallbacks.",
+          file=sys.stderr, flush=True)
 
 
 # ================================================================
@@ -500,8 +482,7 @@ async def run_task(env, client: OpenAI, task_config: Dict) -> None:
 # ================================================================
 async def main() -> None:
     """Run inference across all 3 tasks."""
-    validate_env()
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "sk-placeholder")
 
     # Connect to environment: Docker image (validator) or local server (dev)
     if IMAGE_NAME:
