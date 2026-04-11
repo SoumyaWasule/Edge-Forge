@@ -1,3 +1,13 @@
+---
+title: Edge Forge Env
+emoji: ⚡
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # Edge-Forge Lite
 **Autonomous Synthetic Staging Engine with Stateful Bug Discovery**
 
@@ -5,7 +15,7 @@
 
 **Edge-Forge Lite trains agents to autonomously fuzz a stateful loan-processing API, teaching them to chain multi-step payloads (like opening an account before bypassing identity verification) to discover critical production crashes that random fuzzing cannot reach.**
 
-[**View Live on Hugging Face Spaces ↗**](https://huggingface.co/spaces/SoumyaWasule/Edge-Forge) *(Replace with actual URL if different)*
+[**View Live on Hugging Face Spaces ↗**](https://huggingface.co/spaces/SoumyaW/edge_forge_env)
 
 ---
 
