@@ -487,7 +487,7 @@ Edge-Forge replaces OpenEnv's default stateless routers with custom thread-safe 
 
 **Hugging Face Space:** [https://huggingface.co/spaces/SoumyaW/edge_forge_env](https://huggingface.co/spaces/SoumyaW/edge_forge_env)
 
-**Live API Base URL:** `https://soumyaw-edge-forge-env.hf.space`
+**Live API Base URL:** [https://soumyaw-edge-forge-env.hf.space](https://soumyaw-edge-forge-env.hf.space)
 
 ---
 
