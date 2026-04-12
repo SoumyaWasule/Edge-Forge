@@ -10,54 +10,36 @@ license: bsd-3-clause
 short_description: Stateful API fuzzing RL environment for edge-case discovery
 ---
 
-# ⚡ Edge-Forge
+# Edge-Forge
 
-**OpenEnv-Compatible Reinforcement Learning Environment for Stateful API Fuzzing & Edge-Case Discovery**
+**Stateful API fuzzing environment for the OpenEnv ecosystem.**
 
-> A multi-step, deterministic RL environment that evaluates whether LLM agents can autonomously explore stateful APIs, chain multi-step payloads, and discover critical production bugs that random fuzzing cannot reach.
+An RL environment where agents learn to discover bugs in a simulated loan-processing API by constructing payloads, managing session state, and exploring branching logic — things that random fuzzers can't do.
 
 ![HF Space Status](https://img.shields.io/badge/HF%20Space-Deployed-green?logo=huggingface) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-100%25-brightgreen) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker) ![License](https://img.shields.io/badge/License-BSD_3--Clause-blue)
 
 ---
 
-# 🌍 Overview
+## Overview
 
-**Edge-Forge** is a **stateful reinforcement learning environment** designed to benchmark **agentic reasoning** in software quality assurance workflows.
+Edge-Forge is an OpenEnv-compatible environment that wraps a mock loan-processing API with 19 code branches across 6 nested logic layers. The agent interacts through three actions — `SET_FIELD`, `SUBMIT`, and `RESET` — building payloads one field at a time and submitting them to trigger different API responses.
 
-Unlike static fuzzers or single-step code benchmarks, Edge-Forge evaluates:
+What makes it interesting as an RL problem:
 
-- Multi-step payload construction and submission
-- Stateful bug discovery through sequential API interactions
-- Branch coverage maximization across complex decision trees
-- Type-safe field manipulation under penalty constraints
-- Long-horizon planning with step budgets and efficiency pressure
+- **State carries across submissions.** The API has internal state (e.g., account status transitions from `null` → `pending` → `active`). Some bugs only surface after a specific sequence of submissions — you can't find them in a single request.
+- **The agent builds payloads incrementally.** It can only set one field per step, so assembling a valid payload takes multiple actions before each `SUBMIT`. Type mismatches (e.g., passing a string where an int is expected) incur penalties.
+- **Coverage is the objective for one task.** The medium task scores the agent on how many unique API responses it can trigger out of 19 total, which requires systematic variation of inputs across multiple submit-reset cycles.
+- **Grading is deterministic.** No LLM-as-judge. Graders check for exact API response strings in the episode's `submit_outcomes` list.
 
-The environment simulates a **loan-processing API** where an AI agent must:
-
-- Build input payloads field-by-field using `SET_FIELD` actions
-- Submit payloads to trigger validation errors and discover code branches
-- Navigate 6 nested logic layers with 19 distinct code paths
-- Discover stateful crash sequences requiring multi-step API calls
-- Maximize branch coverage while minimizing wasted steps
-
-The agent is scored using **dense deterministic rewards** mapped to strict `0.01–0.99` grader bounds.
+The environment exposes standard OpenEnv endpoints (`/reset`, `/step`, `/state`) and scores are clamped to `[0.01, 0.99]`.
 
 ---
 
-# 🎯 Why This Exists
+## Why This Exists
 
-Traditional API fuzzing tools blast endpoints with random inputs. They fundamentally fail against **stateful architectures** where bugs only trigger after a specific sequence of valid API calls.
+Most code benchmarks evaluate agents on single-shot generation — write a function, check if it passes tests. Edge-Forge tests something different: can an agent explore a live system through repeated interactions, maintain context about what it's tried, and deliberately trigger failure modes?
 
-Edge-Forge tests **dynamic decision-making** in API exploration workflows.
-
-This evaluates whether an LLM can:
-
-- Discover bugs that require sequential state transitions
-- Systematically explore branching logic across multiple input dimensions
-- Build valid payloads incrementally under type constraints
-- Balance exploration breadth with exploitation depth
-- Avoid costly penalties from type hallucinations
-- Chain multi-step payloads to reach deeply nested code paths
+The specific gap it fills: stateful, multi-step API exploration with a dense reward signal. The agent needs to remember that calling `open_account` puts the system in a `pending` state, and only *then* can it trigger the stateful crash by submitting `verify_identity` without an SSN. Random agents almost never discover this because it requires a specific 2-step sequence with the right fields omitted.
 
 ---
 
