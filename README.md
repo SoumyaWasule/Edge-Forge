@@ -6,42 +6,446 @@ colorTo: purple
 sdk: docker
 app_port: 8000
 pinned: false
+license: bsd-3-clause
+short_description: Stateful API fuzzing RL environment for edge-case discovery
 ---
 
-# Edge-Forge
-**Autonomous Synthetic Staging Engine with Stateful Bug Discovery**
+# ⚡ Edge-Forge
+
+**OpenEnv-Compatible Reinforcement Learning Environment for Stateful API Fuzzing & Edge-Case Discovery**
+
+> A multi-step, deterministic RL environment that evaluates whether LLM agents can autonomously explore stateful APIs, chain multi-step payloads, and discover critical production bugs that random fuzzing cannot reach.
 
 ![HF Space Status](https://img.shields.io/badge/HF%20Space-Deployed-green?logo=huggingface) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-100%25-brightgreen) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker) ![License](https://img.shields.io/badge/License-BSD_3--Clause-blue)
 
-**Edge-Forge trains agents to autonomously fuzz a stateful loan-processing API, teaching them to chain multi-step payloads (like opening an account before bypassing identity verification) to discover critical production crashes that random fuzzing cannot reach.**
+---
 
-[**View Live on Hugging Face Spaces ↗**](https://huggingface.co/spaces/SoumyaW/edge_forge_env)
+# 🌍 Overview
+
+**Edge-Forge** is a **stateful reinforcement learning environment** designed to benchmark **agentic reasoning** in software quality assurance workflows.
+
+Unlike static fuzzers or single-step code benchmarks, Edge-Forge evaluates:
+
+- Multi-step payload construction and submission
+- Stateful bug discovery through sequential API interactions
+- Branch coverage maximization across complex decision trees
+- Type-safe field manipulation under penalty constraints
+- Long-horizon planning with step budgets and efficiency pressure
+
+The environment simulates a **loan-processing API** where an AI agent must:
+
+- Build input payloads field-by-field using `SET_FIELD` actions
+- Submit payloads to trigger validation errors and discover code branches
+- Navigate 6 nested logic layers with 19 distinct code paths
+- Discover stateful crash sequences requiring multi-step API calls
+- Maximize branch coverage while minimizing wasted steps
+
+The agent is scored using **dense deterministic rewards** mapped to strict `0.01–0.99` grader bounds.
 
 ---
 
-## 💥 The Problem (Why This Matters)
+# 🎯 Why This Exists
 
-In the real world, developers cannot test against production data due to strict privacy laws like GDPR and SOC2, leaving edge cases dangerously undiscovered. Traditional fuzzing tools blast APIs with random inputs, but they fundamentally fail against **stateful architectures** where bugs only trigger after a specific sequence of valid API calls (e.g., initiating a loan -> entering pending state -> skipping an SSN verification step). When these undiscovered stateful bugs hit production, they cause silent data corruption, system crashes, and blocked user accounts, costing engineering teams thousands of hours in incident response. Edge-Forge frames edge-case discovery as an RL problem, proving that intelligent agents can learn deep API lifecycles and navigate logic thresholds that defeat naive fuzzers.
+Traditional API fuzzing tools blast endpoints with random inputs. They fundamentally fail against **stateful architectures** where bugs only trigger after a specific sequence of valid API calls.
 
----
+Edge-Forge tests **dynamic decision-making** in API exploration workflows.
 
-## 🎯 Environment at a Glance
+This evaluates whether an LLM can:
 
-| Metric | Detail |
-| :--- | :--- |
-| **Environment Name** | `edge_forge_env` (v0.1.0) |
-| **Tasks** | 3 (Easy / Medium / Hard) |
-| **Action Space** | Sparse, 3 types: `SET_FIELD`, `RESET`, `SUBMIT` |
-| **Observation Space** | Dict (status, input state, errors, outcomes, branch labels) |
-| **Reward Range** | `0.01` → `0.99` (mapped from raw points) |
-| **Partial Credit** | Yes (`medium_task` scores linearly by unique outcome count / 19) |
-| **Stateful** | Yes (Multi-step HTTP sessions via `server.app` locking) |
-| **Base Image** | `ghcr.io/meta-pytorch/openenv-base:latest` |
-| **HF Space** | *Deployed* |
+- Discover bugs that require sequential state transitions
+- Systematically explore branching logic across multiple input dimensions
+- Build valid payloads incrementally under type constraints
+- Balance exploration breadth with exploitation depth
+- Avoid costly penalties from type hallucinations
+- Chain multi-step payloads to reach deeply nested code paths
 
 ---
 
-## 🏗️ Architecture Diagram
+# 📊 How Edge-Forge Differs from Existing Benchmarks
+
+| Benchmark Type | Steps     | Stateful Bugs | Branch Coverage | Type Penalties | State Transitions |
+| -------------- | --------- | ------------- | --------------- | -------------- | ----------------- |
+| HumanEval      | 1         | ❌            | ❌              | ❌             | ❌                |
+| MBPP           | 1         | ❌            | ❌              | ❌             | ❌                |
+| SWE-bench      | 1-3       | ❌            | Limited         | ❌             | ❌                |
+| **Edge-Forge** | **15-30** | **✅**        | **✅**          | **✅**         | **✅**            |
+
+## Key Limitations of Existing Benchmarks
+
+**Single-Step Evaluation:** Most code benchmarks test whether generated code runs correctly. They don't test whether an agent can explore a system through multiple interactions.
+
+**No Stateful Reasoning:** Existing benchmarks rarely require agents to maintain and reason about hidden system state across steps.
+
+**No Coverage Objectives:** Real-world QA requires maximizing code path coverage, not just passing a single test case.
+
+**No Penalty Dynamics:** Real fuzzing requires type-safe inputs. Sending malformed data should cost the agent, forcing careful construction.
+
+## Edge-Forge Advantages
+
+**Multi-Step Payload Construction:** Episodes span 15–30 steps, requiring agents to set fields, submit, observe, reset, and iterate.
+
+**Stateful Crash Discovery:** The `hard_task` requires a specific two-step API sequence (`open_account` → `verify_identity` without SSN) that only crashes when internal state is `"pending"`.
+
+**Branch Coverage Scoring:** The `medium_task` grades agents on how many of 19 distinct API response paths they discover, rewarding systematic exploration.
+
+**Type Enforcement:** Invalid field types incur immediate `-2.0` penalties, teaching agents to respect schema constraints.
+
+---
+
+# 🧩 Environment Design
+
+## Observation Space
+
+Each step returns:
+
+```python
+class EdgeForgeObservation(Observation):
+    last_status: int           # HTTP-like status: 200 (success), 500 (error)
+    covered_branches: List[str]# Code branches discovered so far
+    current_input: Dict        # Current payload being built by agent
+    last_error: Optional[str]  # Error message if submission failed
+    submit_outcomes: List[str] # Observable API response strings
+```
+
+The agent observes the direct outcome of its most recent step, accumulated coverage, and its current built-up payload. The environment is **partially observable** — the agent never sees internal `app_state` (e.g., `verification_attempts`) or logic thresholds (e.g., `enterprise_days` limits), forcing it to probe the system's boundaries through experimentation.
+
+---
+
+## Action Space
+
+Discrete agent actions:
+
+```
+SET_FIELD  → Set a single field in the current payload (e.g., age=25)
+SUBMIT     → Submit the current payload to the mock API
+RESET      → Clear the current payload and start fresh
+```
+
+Each action mutates environment state. Because the agent can only `SET_FIELD` one property per step, assembling a complete payload takes several actions before a `SUBMIT`. This transforms dictionary manipulation into a multi-step MDP.
+
+---
+
+## State Transition Flow
+
+The agent builds payloads and submits them through a 6-layer decision tree. The mock API maintains internal state across submissions. Invalid inputs are penalized.
+
+```mermaid
+graph LR
+    A[Empty Payload] -->|SET_FIELD| B[Building Payload]
+    B -->|SET_FIELD| B
+    B -->|SUBMIT| C{API Decision Tree}
+
+    C -->|"action: open_account"| SA["Account Opened (pending)"]
+    SA -->|RESET + SET_FIELD| SB["verify_identity (no SSN)"]
+    SB -->|SUBMIT| SC["🔴 Stateful Crash"]
+
+    C -->|"action: verify_identity"| VR{SSN Check}
+    VR -->|"ssn=abc"| VE["SSN Must Be Numeric"]
+    VR -->|"ssn=null + pending"| SC
+
+    C -->|"age=null"| L1["Missing Age Error"]
+    C -->|"income=null"| L1B["Missing Income Error"]
+    C -->|"age < 18"| L2["Underage Rejection"]
+    C -->|"income < 0"| L2B["Negative Income Error"]
+    C -->|"balance < -1000"| L3{Enterprise?}
+    L3 -->|"Yes + income > 50K"| L3A["Debt Recovery Program"]
+    L3 -->|No| L3B["Extreme Debt Rejection"]
+    C -->|"credit < 300"| L3C["Credit Too Low"]
+    C -->|"user_type=enterprise"| L4{Income Level}
+    L4 -->|"> 100K"| L4A["Premium Tier"]
+    L4 -->|"deficit + tenure"| L4B["Enterprise Veteran"]
+    L4 -->|standard| L4C["Standard Enterprise"]
+    C -->|"region=restricted"| L5{Override?}
+    L5 -->|"income > 75K + 180d"| L5A["Compliance Override"]
+    L5 -->|No| L5B["Pending Review"]
+    C -->|"days < 10"| L6["New User (Limited)"]
+    C -->|default| L6B["✅ Approved"]
+
+    L1 & L1B & L2 & L2B & L3A & L3B & L3C & L4A & L4B & L4C & L5A & L5B & L6 & L6B & VE & SC -->|RESET| A
+
+    B -.->|"invalid type (e.g. age='abc')"| X["❌ Penalty (-2.0)"]
+    B -.->|"unknown field"| Y["❌ Penalty (-1.0)"]
+    A -.->|"empty SUBMIT"| Z["❌ Wasted Step (-1.0)"]
+```
+
+**Valid Progressions:**
+
+- Empty → SET_FIELD(age=25) → SET_FIELD(income=50000) → SUBMIT → Observe branch → RESET → Repeat with new inputs
+- Empty → SET_FIELD(action=open_account) → SUBMIT → RESET → SET_FIELD(action=verify_identity) → SUBMIT → **Stateful Crash** ✓
+- Empty → SET_FIELD(action=verify_identity) → SET_FIELD(ssn=abc) → SUBMIT → **SSN Format Error** ✓
+- Empty → SET_FIELD(user_type=enterprise) → SET_FIELD(balance=-2000) → SET_FIELD(income=60000) → SUBMIT → **Debt Recovery** ✓
+
+**Invalid Actions (Examples):**
+
+- Setting `age="twenty-five"` (string instead of int) → type penalty (-2.0)
+- Setting `favorite_color=red` (unknown field) → unknown field penalty (-1.0)
+- Submitting without any fields set → wasted step penalty (-1.0)
+- Repeating identical payloads → no new branch discovered, step penalty only (-1.0)
+
+---
+
+## Reward Shaping
+
+Dense deterministic rewards guide exploration:
+
+| Event                              | Reward  |
+| ---------------------------------- | ------- |
+| Set field (proportional to completeness) | +0.5×   |
+| Discover new unique branch         | +10.0   |
+| Trigger error on new branch        | +50.0   |
+| Hit deep/stateful branch           | +25.0   |
+| Reset after submission             | +1.0    |
+| Discover all 19 branches           | +100.0  |
+| Invalid field type                 | -2.0    |
+| Unknown field                      | -1.0    |
+| Per-step efficiency penalty        | -1.0    |
+
+> **Note:** The environment's internal RL rewards return values > 1.0 during steps to guide policy learning. The OpenEnv-compliant graders separately score final episodic outputs strictly within `0.01–0.99` bounds.
+
+---
+
+# 🧪 Tasks
+
+## Easy — Trigger SSN Error
+
+Agent must:
+
+1. Set `action` field to `verify_identity`
+2. Set `ssn` field to a non-numeric string (e.g., `"abc"`)
+3. Submit the payload
+4. Trigger the `"SSN must be numeric"` validation error
+
+**Scenario:** Developer left a string-validation gap in the SSN input handler.
+
+**Max Steps:** 30
+**Perfect Score:** 0.99
+
+---
+
+## Medium — Maximize Branch Coverage
+
+Agent must:
+
+- Explore 19 distinct API response paths
+- Submit varied combinations of `age`, `income`, `balance`, `user_type`, `region`, `days_active`, `credit_score`
+- Discover validation errors, eligibility rejections, financial risk paths, enterprise tiers, and region restrictions
+- Strategically iterate using RESET to pivot across input dimensions
+
+**Scenario:** Full coverage audit of a complex loan-processing API with 6 nested logic layers.
+
+**Max Steps:** 30
+**Scoring:** Linear — unique outcomes discovered / 19 total paths
+**Perfect Score:** 0.99
+
+---
+
+## Hard — Stateful Crash Trap
+
+Agent must:
+
+1. Submit `action: open_account` to transition internal state to `"pending"`
+2. Submit `action: verify_identity` **without** providing an SSN
+3. Trigger `"SSN missing during pending verification"` crash
+
+**Scenario:** A stateful bug exists where the verification endpoint assumes SSN is present when account status is `"pending"`. The crash only manifests after a specific two-step API sequence — random fuzzing cannot reliably discover it.
+
+**Max Steps:** 30
+**Perfect Score:** 0.99
+
+---
+
+# 📈 Baseline Performance
+
+We evaluated a random agent and an LLM agent (Qwen 2.5 72B) across all three difficulty levels:
+
+| Task | Random Baseline | LLM Agent (Qwen 2.5 72B) | Delta | Key Challenge |
+| ---- | --------------- | ------------------------- | ----- | ------------- |
+| Easy | ~0.01 | **0.99** | +0.98 | Single validation path |
+| Medium | ~0.15 | **~0.45** | +0.30 | Systematic exploration |
+| Hard | ~0.01 | **0.99** | +0.98 | Sequential state reasoning |
+
+## Interpretation
+
+**Easy (0.99):** The LLM agent reliably constructs the correct payload. This validates that the environment is solvable and rewards are correctly calibrated.
+
+**Medium (~0.45):** The agent discovers roughly half of the 19 branches. It struggles with deep-nested paths requiring specific field combinations (e.g., `enterprise` user type with `balance < -1000` and `income > 50000` for the debt recovery path).
+
+**Hard (0.99):** The LLM agent successfully reasons about the two-step state sequence. This is the benchmark's signature challenge — random agents achieve ~0.01 because the crash requires a specific `open_account` → `verify_identity` ordering.
+
+## Difficulty Scaling
+
+The results demonstrate meaningful difficulty progression:
+
+- Easy tests single-field validation (solvable in 3–4 steps)
+- Medium tests combinatorial exploration (requires 15–20+ strategic steps)
+- Hard tests stateful reasoning (requires understanding hidden internal state transitions)
+
+---
+
+# 🧩 Why This Environment Is Hard for LLMs
+
+LLMs excel at code generation but struggle with multi-step API exploration under constraints.
+
+## Challenge 1: Stateful Bug Discovery
+
+**Problem:** The `hard_task` crash only manifests after `open_account` sets internal state to `"pending"`. The agent never directly observes this state.
+
+**Why LLMs Struggle:** LLMs must infer hidden state transitions from indirect evidence. The crash path is invisible until the exact two-step sequence is executed.
+
+**Example:** The agent must first submit `action: open_account`, then submit `action: verify_identity` without `ssn`. If it sends them in the wrong order or includes the SSN, the crash never triggers.
+
+## Challenge 2: Combinatorial Exploration
+
+**Problem:** The `medium_task` requires discovering 19 distinct API paths across 6 logic layers with interacting input dimensions.
+
+**Why LLMs Struggle:** Systematic coverage requires strategic planning — varying one dimension at a time while controlling others. LLMs tend to repeat similar inputs instead of methodically exploring the space.
+
+**Example:** Reaching the `enterprise_debt_recovery` path requires `user_type="enterprise"` AND `balance < -1000` AND `income > 50000`. Missing any single condition routes to a different branch.
+
+## Challenge 3: Type-Safe Payload Construction
+
+**Problem:** Fields have strict type requirements. Setting `age="twenty-five"` instead of `age=25` incurs a `-2.0` penalty.
+
+**Why LLMs Struggle:** LLMs naturally produce string outputs. They must learn to emit correctly typed values (integers for age/income, strings for action/region) without schema documentation.
+
+**Example:** An agent might set `age="25"` (string) instead of `age=25` (integer), incurring a penalty despite the "correct" value.
+
+## Challenge 4: Efficient Exploration Under Step Budgets
+
+**Problem:** Each step incurs a `-1.0` efficiency penalty. Agents must discover branches quickly.
+
+**Why LLMs Struggle:** Without explicit optimization pressure, LLMs may redundantly explore already-discovered paths or submit incomplete payloads.
+
+**Example:** An agent that discovers 10 branches in 20 steps (net: ~80 points) outperforms one that discovers 12 branches in 30 steps (net: ~90 points) due to diminishing returns against step costs.
+
+---
+
+# 🔁 RL Loop
+
+Agent interacts via:
+
+```python
+reset()     # Initialize episode, clear state
+step(action) # Execute action, receive observation + reward
+state()     # Query current environment state
+```
+
+Episode continues until:
+
+- Max steps reached (30 steps per episode)
+- All 19 branches discovered (early completion bonus)
+
+---
+
+# 🔒 Deterministic Guarantee
+
+**Edge-Forge is fully deterministic.**
+
+## What This Means
+
+Given the same:
+
+- Initial state (task scenario)
+- Action sequence
+
+The environment will **always** produce:
+
+- Identical state transitions
+- Identical rewards
+- Identical final score
+
+## Why This Matters for RL
+
+**Reproducibility:** Experiments can be exactly replicated across runs, machines, and researchers.
+
+**Debugging:** If an agent fails, you can replay the exact action sequence to diagnose the issue.
+
+**Fair Evaluation:** All agents are evaluated on identical scenarios with identical reward functions.
+
+**No LLM-as-Judge:** Graders use deterministic string matching against observable API outcomes — zero hallucination risk in scoring.
+
+---
+
+# 🌐 OpenEnv HTTP API
+
+Endpoints:
+
+```
+POST /reset       → Initialize new episode
+POST /step        → Execute agent action
+GET  /state       → Query current environment state
+GET  /health      → Health check
+```
+
+---
+
+# 🧠 Example Agent Rollout
+
+```
+[START] task=easy_task env=edge_forge_env model=Qwen/Qwen2.5-72B-Instruct
+
+[STEP] step=1 action=SET_FIELD(action=verify_identity) reward=-0.50 done=false error=null
+[STEP] step=2 action=SET_FIELD(ssn=abc) reward=-0.25 done=false error=null
+[STEP] step=3 action=SUBMIT reward=50.00 done=false error=null
+
+[END] success=true steps=3 score=0.990 rewards=-0.50,-0.25,50.00
+```
+
+---
+
+# ⚠️ Agent Failure Cases
+
+## Failure Mode 1: Type Hallucination
+
+**Scenario:** Agent sets a field with the wrong type.
+
+**Action Sequence:**
+
+```
+[STEP 1] SET_FIELD(age="twenty-five") → reward=-2.00 ✗ (type violation)
+[END] total_reward=-2.00
+```
+
+**Root Cause:** LLM produced a string instead of an integer for a numeric field.
+
+---
+
+## Failure Mode 2: Missing Stateful Precondition
+
+**Scenario:** Agent attempts `verify_identity` without first calling `open_account`.
+
+**Action Sequence:**
+
+```
+[STEP 1] SET_FIELD(action=verify_identity) → reward=-0.50 ✓
+[STEP 2] SUBMIT                            → reward=+10.00 ✓ (discovers verify_attempt)
+[END] total_reward=+9.50 — but "SSN missing during pending verification" NOT triggered
+```
+
+**Root Cause:** The crash requires `app_state["status"] == "pending"`, which only happens after an `open_account` submission. Without the precondition, the agent hits a different (non-crash) branch.
+
+---
+
+## Failure Mode 3: Redundant Exploration
+
+**Scenario:** Agent repeatedly submits similar payloads instead of varying inputs.
+
+**Action Sequence:**
+
+```
+[STEP 1] SET_FIELD(age=25)    → reward=-0.50 ✓
+[STEP 2] SET_FIELD(income=50000) → reward=-0.25 ✓
+[STEP 3] SUBMIT               → reward=+10.00 ✓ (new branch)
+[STEP 4] SET_FIELD(age=26)    → reward=-0.50 ✓
+[STEP 5] SET_FIELD(income=50001) → reward=-0.25 ✓
+[STEP 6] SUBMIT               → reward=-1.00 ✗ (same branch, no new discovery)
+```
+
+**Root Cause:** Marginal input changes don't cross logic thresholds. The agent must understand that branching depends on categorical boundaries (e.g., `age < 18`, `income < 0`), not small numeric variations.
+
+---
+
+# 🏗️ Architecture
 
 ```text
                       +---------------------------------------+
@@ -60,9 +464,9 @@ In the real world, developers cannot test against production data due to strict 
   |            v                                            v              |
   | +----------------------+                        +--------------------+ |
   | | EdgeForgeEnvironment |                        |     Graders        | |
-  | |  - Tracks Step #     |  <-- submit_outcomes --|  - grade_easy()    | |
-  | |  - Calculates Reward |                        |  - grade_medium()  | |
-  | |  - Validates Types   |                        |  - grade_hard()    | |
+  | |  - Tracks Step #     |  <-- submit_outcomes --| - grade_easy()     | |
+  | |  - Calculates Reward |                        | - grade_medium()   | |
+  | |  - Validates Types   |                        | - grade_hard()     | |
   | +----------------------+                        +--------------------+ |
   |            |                                                           |
   |            v                                                           |
@@ -75,102 +479,104 @@ In the real world, developers cannot test against production data due to strict 
   +========================================================================+
 ```
 
-*(Note: Edge-Forge removes OpenEnv's default stateless routers and implements custom thread-safe logic to maintain an internal `_env_instance` for true RL episode pacing.)*
+Edge-Forge replaces OpenEnv's default stateless routers with custom thread-safe logic to maintain an internal `_env_instance` for true RL episode pacing.
 
 ---
 
-## 🪜 Task Ladder
+# 🚀 Live Deployment
 
-| # | Task Name | Difficulty | What the Agent Must Do | Grader Logic | Max Score |
-|---|---|---|---|---|---|
-| 1 | `easy_task` | Easy | Submit a payload with `action: verify_identity` and `ssn: "abc"` to trigger string-validation error. | Checks if `"SSN must be numeric"` is identically matched in `submit_outcomes`. | 0.99 |
-| 2 | `medium_task` | Medium | Maximize API branch coverage by submitting varied combinations of age, income, balance, and regions. | Counts unique actual API response strings divided by total possible (`19`), clamped to float bounds. | 0.99 |
-| 3 | `hard_task` | Hard | Trigger a stateful crash trap. Must submit `action: open_account`, then submit `action: verify_identity` but omit the SSN. | Checks if `"SSN missing during pending verification"` is identically matched in `submit_outcomes`. | 0.99 |
+**Hugging Face Space:** [https://huggingface.co/spaces/SoumyaW/edge_forge_env](https://huggingface.co/spaces/SoumyaW/edge_forge_env)
 
-**Progression Analysis:**
-The difficulty scales from a simple field-typing validation (Easy), to a brute-force combination search space (Medium), to a strict multi-step state sequence (Hard). `hard_task` is exceedingly difficult for non-RL approaches because the crash *only* exists if the API's internal `app_state["status"]` is set to `"pending"` during a prior `SUBMIT` step. The agent must sequence interactions correctly and remember its embedded session state to hit the trap.
+**Live API Base URL:** `https://soumyaw-edge-forge-env.hf.space`
 
 ---
 
-## 📈 Reward Function Deep Dive
+# 📦 Project Structure
 
-Edge-Forge implements process supervision to guide the agent through its complex state space, combined with strict efficiency penalties:
-
-* **0.0 (Failure / Penalties):** 
-  * `-2.0` for typing invalid data (e.g. passing a string for `age`).
-  * `-1.0` step penalty to force efficiency.
-  * `-1.0` for passing unknown fields.
-* **Partial Credit / Intermediate (> 0.0):** 
-  * `+0.5 * completeness` given when setting a field, proportional to how many fields are correctly populated. 
-  * `+1.0` exploration bonus when the agent correctly uses the `RESET` action after a `SUBMIT`.
-  * `+10.0` for discovering any new unique branch.
-* **1.0 / Major Milestones:** 
-  * `+50.0` for triggering an error on a new branch.
-  * `+25.0` bonus for hitting specific deep states (`deep_branch`, `stateful_crash`, `ssn_format_bug`, `enterprise_debt_recovery`, etc.).
-  * `+100.0` massive completion bonus for discovering all 19 branches before the 30-step episode limit (`MAX_STEPS`).
-
-*(Note: The environment's internal RL reward returns integers/floats > 1.0 during steps to guide RL policies. However, the OpenEnv compliance graders explicitly score final episodic outputs strictly inside `0.01 -> 0.99` bounds to adhere to standard validation limitations.)*
-
----
-
-## 🔍 Observation & Action Space Reference
-
-### Observation Space
-```python
-class EdgeForgeObservation(Observation):
-    last_status: int           # HTTP-like status: 200 (success), 500 (error)
-    covered_branches: List[str]# List of code branches discovered so far
-    current_input: Dict        # Current input payload being built by agent
-    last_error: Optional[str]  # Error message if submission failed
-    submit_outcomes: List[str] # Observable API response strings
 ```
-The agent observes the direct outcome of its most recent step, accumulated coverage, and its current built-up payload. The environment is *partially observable*; the agent *never* sees the internal `app_state` (e.g., `verification_attempts`) or the stochastic thresholds (e.g., `enterprise_days` limits), forcing it to probe blindly until it maps the boundary.
-
-### Action Space
-```python
-class EdgeForgeAction(Action):
-    action_type: str       # "SET_FIELD", "RESET", or "SUBMIT"
-    field: Optional[str]   # "age", "income", "user_type", "action", "ssn", etc.
-    value: Optional[Any]   # Value matching the field constraint
+edge-forge/
+├── openenv.yaml          # Environment specification manifest
+├── Dockerfile            # Container definition (uv package management)
+├── inference.py          # OpenEnv-compliant LLM agent inference loop
+├── pyproject.toml        # Dependencies & module configuration
+├── client.py             # OpenEnv SDK client wrapper
+├── models.py             # Pydantic models for Action/Observation typing
+├── mock_api.py           # Core API: 19 branches, 6 layers, stateful logic
+├── tasks.py              # Task definitions & deterministic graders
+├── graders.py            # OpenEnv-discoverable grading functions
+├── server/
+│   ├── app.py            # Stateful FastAPI overriding default routers
+│   └── edge_forge_env_environment.py  # RL MDP, reward shaping, constraints
+├── tests/                # Test suite
+├── LICENSE               # BSD 3-Clause
+└── README.md
 ```
-The constraint here turns standard dictionary manipulation into a multi-step MDP. Because the agent can only `SET_FIELD` one property per step, assembling a "perfect" user payload takes several actions before a `SUBMIT`. Any type hallucination incurs an immediate `-2.0` penalty.
 
 ---
 
-## ⚡ Quickstart (Exact Commands)
+# ⚙️ Run Locally
 
-### Option A: Run via Docker (Recommended)
+Install dependencies:
+
 ```bash
-# 1. Build the container natively
-docker build -t edge_forge_env:latest .
+uv sync
+```
 
-# 2. Run the environment mapping strictly to port 8000
-docker run -p 8000:8000 -e IMAGE_NAME=edge_forge_env:latest edge_forge_env:latest
+Run server:
 
-# 3. Test functionality directly
+```bash
+uv run uvicorn edge_forge_env.server.app:app --host 0.0.0.0 --port 8000
+```
+
+Test in another terminal:
+
+```bash
 curl -X POST http://localhost:8000/reset
 ```
 
-### Option B: Run Locally
+---
+
+# 🐳 Docker
+
+Build:
+
 ```bash
-# 1. Install dependencies via uv
-uv sync
+docker build -t edge_forge_env:latest .
+```
 
-# 2. Start the FastAPI server internally
-uv run uvicorn edge_forge_env.server.app:app --host 0.0.0.0 --port 8000
+Run:
 
-# 3. In a separate terminal, execute the OpenEnv standard inference loop
-export HF_TOKEN="your_hf_token"
-export MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
-export ENV_BASE_URL="http://localhost:8000"
+```bash
+docker run -p 8000:8000 -e IMAGE_NAME=edge_forge_env:latest edge_forge_env:latest
+```
+
+Test:
+
+```bash
+curl http://localhost:8000/health
+```
+
+---
+
+# 🤖 Run Agent
+
+Set environment variables:
+
+```bash
+export HF_TOKEN=your_token_here
+export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
+export ENV_BASE_URL=http://localhost:8000
+```
+
+Run inference:
+
+```bash
 uv run python inference.py
 ```
 
-### Option C: Use the live HF Space
-Visit the live API directly. It fully supports `POST /reset`, `POST /step`, and `GET /state` per OpenEnv requirements and will stream back standard HTTP observation outputs locally.
+Expected output:
 
-**Expected Baseline Output Log (from inference.py)**
-```text
+```
 [START] task=medium_task env=edge_forge_env model=Qwen/Qwen2.5-72B-Instruct
 [STEP] step=1 action=SET_FIELD(age=25) reward=-0.94 done=false error=null
 [STEP] step=2 action=SET_FIELD(income=50000) reward=-0.89 done=false error=null
@@ -180,98 +586,83 @@ Visit the live API directly. It fully supports `POST /reset`, `POST /step`, and 
 
 ---
 
-## 📊 Baseline Results
+# 🔬 Research Use Cases
 
-| Task | Random Baseline | LLM Agent (Qwen 2.5 72B) | Delta |
-|------|-----------------|--------------------------|-------|
-| `easy_task` | ~0.01 | 0.99 | +0.98 |
-| `medium_task` | ~0.15 | ~0.45* | +0.30 |
-| `hard_task` | ~0.01 | 0.99 | +0.98 |
+## Use Case 1: Benchmarking LLM Exploration Strategies
 
-*\*The Medium task evaluates exploration coverage out of 19 total API outcomes. Random agents cannot strategically expand logic branches, whereas the Qwen agent demonstrates planning by retaining context and iterating across fields.*
+**Application:** Evaluate how effectively LLM agents explore unknown API surfaces.
 
-*(Note: Maximum runtime consistently clocks under 4 minutes per episodic loop, firmly satisfying the 20-minute SLA on 2 vCPU / 8 GB RAM hackathon spec limits.)*
+**Research Questions:**
 
----
+- Can agents systematically maximize branch coverage?
+- Do agents learn to vary inputs strategically?
+- How does exploration efficiency scale with model size?
 
-## 🧠 Technical Architecture & Novel Design Decisions
-
-**1. Simulating Core Software Engineering Failures**  
-Edge-Forge is designed around the philosophy that good RL environments map to expensive real-world problems. Fuzzing API structures with complex types, mocked privacy restrictions, and state dependencies is a multi-million dollar QA issue. The schema requires process-supervised exploration, rewarding the agent not just for finishing, but for successfully compiling complex dictionary payloads step-by-step.
-
-**2. Stateful Session Entanglement**  
-Unlike typical OpenEnv configurations which run strictly as stateless request-response loops, Edge-Forge intentionally patches OpenEnv's stateless HTTP routes inside `app.py`. It uses a threading `_env_lock` natively over `_env_instance` to preserve genuine HTTP session persistence. This structurally allows agents to trigger the deeply embedded `stateful_crash`—a bug that ONLY manifests if the API receives an `open_account` submit, transitions its internal machine to `pending`, and *then* receives a `verify_identity` submit missing an SSN.
-
-**3. Deterministic Validation Through Observable Outcomes**  
-Many LLM-graded environments use "LLM-as-a-judge", which introduces unreliability, non-determinism, and execution latency. Edge-Forge instead relies on 100% deterministic logic. The environment traps output natively from the `mock_api.py` and stores raw API messages in `submit_outcomes`. The graders (`tasks.py`) strictly parse these observable output strings for exact matches, eliminating hallucination in the reward metric and ensuring high-speed continuous evaluation.
-
-**4. OpenEnv Strict Spec Implementation Constraints**  
-To comply perfectly with the standard SDK boundary, the environment leverages complete Pydantic typed validation (`EdgeForgeAction`, `EdgeForgeObservation`). In `inference.py`, specific coercion strategies (`coerce_field_value`) handle LLM string-int hallucination faults linearly before natively executing the SDK `env.step()`. This securely mirrors real-world production parsing layers defensively filtering agent outputs.
-
-**5. Multi-Step Planning and Tool Use Deficits**  
-The LLM cannot dump a completed JSON. It must use single-field tools incrementally (`SET_FIELD`), materially retaining memory of its previous actions to plan when to optimally emit the `SUBMIT` action, utilizing `RESET` to pivot its search space dynamically out of deep thresholds.
-
-**6. The Missing Ecosystem Segment**  
-Within the OpenEnv Hub, environments tilt heavily towards pure coding, logical puzzles, or 2D game proxies. Edge-Forge introduces foundational **stateful black-box penetration testing**. It solidly serves as a benchmark for measuring if an LLM can functionally infer hidden system architecture and deliberately break it using chained payloads.
+**Why Edge-Forge:** 19-branch decision tree with 6 nested layers provides measurable coverage metrics.
 
 ---
 
-## ✅ OpenEnv Spec Compliance
+## Use Case 2: Stateful Reasoning Under Partial Observability
 
-- [x] ✅ **`openenv.yaml` with all required fields** — Located at root, defining `edge_forge_env`, `0.1.0`. 
-- [x] ✅ **Typed Pydantic models for Action, Observation, State** — Defined strictly in `models.py` natively integrating OpenEnv core base types.
-- [x] ✅ **`step()` endpoint implemented** — Custom stateful hook inside `server/app.py`.
-- [x] ✅ **`reset()` endpoint implemented** — Custom stateful hook inside `server/app.py`.
-- [x] ✅ **`state()` endpoint implemented** — Custom stateful hook returning embedded step counts inside `server/app.py`.
-- [x] ✅ **Minimum 3 tasks with graders** — `easy_task`, `medium_task`, `hard_task` bound in `tasks.py`.
-- [x] ✅ **Reward scores in 0.0–1.0 range** — All graders clamped structurally to `0.01`–`0.99`.
-- [x] ✅ **`inference.py` in root directory** — Executes strict inference loop mapped against spec.
-- [x] ✅ **`[START]/[STEP]/[END]` log format** — Exact format parsing compliant natively emitted into stdout.
-- [x] ✅ **Dockerfile builds successfully** — Configured correctly exposing port 8000 traversing standard UV constraints.
-- [x] ✅ **Deployed to Hugging Face Spaces** — Custom HTML 200 HTTP dashboard exposed natively on boot. 
-- [x] ✅ **Runtime < 20 minutes on 2 vCPU / 8GB RAM** — Fully async inference loops operate under 4m structurally.
-- [x] ✅ **API_BASE_URL, MODEL_NAME, HF_TOKEN** — Ingested natively via `os.getenv` into OpenAI client inside `inference.py`.
-- [x] ✅ **OpenAI client used for all LLM calls** — Executed exactly as `client.chat.completions.create`.
+**Application:** Study whether agents can infer and exploit hidden state transitions.
+
+**Research Questions:**
+
+- Can agents discover bugs requiring sequential preconditions?
+- How many episodes does an RL policy need to learn state-dependent sequences?
+
+**Why Edge-Forge:** The `hard_task` crash is impossible to trigger without understanding hidden `app_state` transitions.
 
 ---
 
-## 🚀 Why Edge-Forge Belongs in the OpenEnv Hub
+## Use Case 3: RL Training for Automated QA
 
-Edge-Forge functionally bridges the structural gap between basic toy logic puzzles and highly complex software QA testbeds. The current OpenEnv registry completely lacks environments dedicated to **stateful API exploration and synthetic payload sequencing**. By permanently including Edge-Forge, Meta researchers can efficiently benchmark model capabilities natively embedded across deep stateful memory retention, strict tool-chaining, and architectural inference, scaling RL agents into rigorous, self-driving QA automation engineers.
+**Application:** Train RL policies for autonomous API testing and fuzzing.
 
----
+**Research Questions:**
 
-## 📁 Project Structure
+- Can RL agents outperform random fuzzers on stateful APIs?
+- What reward shaping strategies best guide coverage maximization?
 
-```text
-edge-forge/
-├── openenv.yaml          # Environment specification manifest
-├── Dockerfile            # Container definition utilizing uv package management
-├── inference.py          # Compliant OpenEnv standard LLM-agent inference loop
-├── pyproject.toml        # Application dependency & module maps
-├── client.py             # OpenEnv SDK client definition wrapper
-├── models.py             # Precise Pydantic configurations for typing Actions/Observations
-├── mock_api.py           # Core Application Logic: 19 branches, 6 layers, thresholds
-├── tasks.py              # Task definitions and deterministic string-match grader logic
-└── server/
-    ├── app.py            # FastAPI implementation overriding standard stateless routers
-    └── edge_forge_env_environment.py # Python RL MDP rules, reward shaping, and constraints
-```
+**Why Edge-Forge:** Deterministic rewards and dense feedback enable reproducible RL training loops.
 
 ---
 
-## 🤝 Contributing & License
+# ✅ OpenEnv Compliance
 
-**Testing Environment Statefulness Locally**
-Utilize the built-in logic testing loops natively by running `uv run pytest` (requires `#pytest>=8.0.0` structured from `[dev]` dependencies inside `pyproject.toml`).
+This environment implements:
 
-**Adding New Grader Tasks**
-1. Modify `mock_api.py` to insert new logic branches or expected failure outputs into `TOTAL_BRANCHES`.
-2. Update `TOTAL_OUTCOMES` explicitly in `tasks.py` and `app.py`.
-3. Add a new explicit grader sequentially matching your expected string output evaluated against `submit_outcomes`.
-4. Append task definition explicitly to `TASKS` structurally inside `server/app.py` and `tasks.py`. 
+- `reset` / `step` / `state` HTTP API
+- Deterministic reward shaping with grader bounds `[0.01, 0.99]`
+- Pydantic-typed `Action` and `Observation` models
+- 3 difficulty-graded tasks with bound graders
+- `inference.py` with `[START]`/`[STEP]`/`[END]` log format
+- Docker deployment on `ghcr.io/meta-pytorch/openenv-base`
+- Hugging Face Space hosting
+- Runtime < 4 minutes on 2 vCPU / 8 GB RAM
 
-**License**
-Licensed natively under the BSD-3-Clause License.
+---
 
-*For OpenEnv ecosystem telemetry, join the [OpenEnv Discord](https://discord.gg/) or review explicit tracker issues natively embedded onto the Meta PyTorch GitHub.*
+# 🏁 Hackathon Submission
+
+- OpenEnv compliant ✓
+- Multi-step stateful RL environment ✓
+- Deterministic grading ✓
+- 3 tasks (easy, medium, hard) ✓
+- Baseline inference provided ✓
+- Docker deployment ✓
+- HF Space deployed ✓
+
+---
+
+# 📜 License
+
+BSD 3-Clause License
+
+---
+
+# 👨‍💻 Author
+
+Built for **Meta × PyTorch × Hugging Face OpenEnv Hackathon**
+
+Designed to benchmark **agentic reasoning in stateful API fuzzing workflows**
