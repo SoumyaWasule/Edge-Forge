@@ -5,4 +5,10 @@ __pycache__
 openenv_edge_forge_env.egg-info
 .git
 .gitignore
+.github
+.pytest_cache
 uv.lock
+tests/
+*.md
+!README.md
+LICENSE

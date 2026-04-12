@@ -16,7 +16,7 @@ short_description: Stateful API fuzzing RL environment for edge-case discovery
 
 An RL environment where agents learn to discover bugs in a simulated loan-processing API by constructing payloads, managing session state, and exploring branching logic — things that random fuzzers can't do.
 
-![HF Space Status](https://img.shields.io/badge/HF%20Space-Deployed-green?logo=huggingface) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-100%25-brightgreen) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker) ![License](https://img.shields.io/badge/License-BSD_3--Clause-blue)
+![Tests](https://github.com/SoumyaWasule/Edge-Forge/actions/workflows/test.yml/badge.svg) ![HF Space Status](https://img.shields.io/badge/HF%20Space-Deployed-green?logo=huggingface) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-100%25-brightgreen) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker) ![License](https://img.shields.io/badge/License-BSD_3--Clause-blue)
 
 ---
 
